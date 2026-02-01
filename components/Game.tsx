@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { BLOCK_SIZE, BLOCK_COLORS, BLOCK_HP, BLOCK_DEFINITIONS, GRAVITY, FRICTION, PICKAXE_TIERS, ZONES, ABILITIES } from '../constants';
 import { Block, BlockType, PhysicsObject, ResourceState, ChatMessage, GameEvent, GameConfig, Debris, Challenge, GameSession, ZoneConfig } from '../types';
@@ -27,9 +28,7 @@ const CHALLENGES: Challenge[] = [
 const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpdate, onDepthUpdate, isSettingsOpen, isLeaderboardOpen, isShopOpen, config, toggleSettings, toggleLeaderboard, toggleShop, resourceState }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isPaused, setIsPaused] = useState(false);
   const [activeChallenges, setActiveChallenges] = useState<Challenge[]>([]);
-  const [zoneNotification, setZoneNotification] = useState<ZoneConfig | null>(null);
   
   // Game State Refs
   const blocksRef = useRef<Block[]>([]);
@@ -45,15 +44,16 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
   const magnetActiveRef = useRef(false);
   const drillActiveRef = useRef(false);
   const freezeActiveRef = useRef(false);
+  const godModeActiveRef = useRef(false);
+  const featherFallActiveRef = useRef(false);
+  const heavyWeightActiveRef = useRef(false);
   
   const cameraYRef = useRef(0);
   const cameraShakeRef = useRef(0);
   const timeScaleRef = useRef(1.0); 
   const sizeMultiplierRef = useRef(1.0);
 
-  const megaTntQueueRef = useRef<string[]>([]);
   const startTimeRef = useRef(Date.now());
-  const queueProcessorRef = useRef<NodeJS.Timeout | null>(null);
   
   const resourceStateRef = useRef<ResourceState>(resourceState);
   const onResourceUpdateRef = useRef(onResourceUpdate);
@@ -73,10 +73,7 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
   }, [onDepthUpdate]);
 
   const frameIdRef = useRef(0);
-  const lastProcessedEventRef = useRef<GameEvent | null>(null);
   const texturesRef = useRef<Record<string, HTMLImageElement>>({});
-  const profileImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
-  const currentZoneRef = useRef<ZoneConfig>(ZONES[0]);
 
   // Challenge Interval
   useEffect(() => {
@@ -162,6 +159,56 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
     return row;
   };
 
+  // Helper Functions
+  const addToInventory = useCallback((type: BlockType, amount: number) => {
+    const newState = { ...resourceStateRef.current };
+    newState.inventory[type] = (newState.inventory[type] || 0) + amount;
+    newState.score += (BLOCK_DEFINITIONS[type]?.value || 0) * amount;
+    
+    if (onResourceUpdateRef.current) {
+        onResourceUpdateRef.current(newState);
+    }
+  }, []);
+
+  const spawnDebris = useCallback((x: number, y: number, color: string) => {
+    for (let i = 0; i < 5; i++) {
+        debrisRef.current.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            color,
+            life: 1.0,
+            size: Math.random() * 5 + 2
+        });
+    }
+  }, []);
+
+  const spawnParticle = useCallback((type: 'BALL' | 'TNT' | 'MEGATNT' | 'PROFILE_PIC' | 'MAGNET_FIELD', x?: number, y?: number, data?: any) => {
+    const startX = x !== undefined ? x : (Math.random() * (worldWidthBlocksRef.current * BLOCK_SIZE - 100) + 50);
+    const startY = y !== undefined ? y : cameraYRef.current - 100;
+
+    particlesRef.current.push({
+        x: startX,
+        y: startY,
+        vx: (Math.random() - 0.5) * 5,
+        vy: Math.random() * 5,
+        radius: type === 'MEGATNT' ? 40 : 10,
+        rotation: 0,
+        vRotation: (Math.random() - 0.5) * 0.2,
+        type,
+        id: `p-${Date.now()}-${Math.random()}`,
+        hp: 1,
+        maxHp: 1,
+        spawnTime: Date.now(),
+        label: data?.label,
+        imageUrl: data?.imageUrl
+    });
+  }, []);
+
+  const spawnMegaTNT = useCallback((source: string) => {
+    spawnParticle('MEGATNT', undefined, undefined, { label: source });
+  }, [spawnParticle]);
+
   const resetGame = useCallback(() => {
     // Recalculate Width
     const screenWidth = window.innerWidth;
@@ -193,13 +240,23 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
     cameraShakeRef.current = 0;
     timeScaleRef.current = 1.0;
     sizeMultiplierRef.current = 1.0;
-    currentZoneRef.current = ZONES[0];
     
+    // Ability Reset
+    magnetActiveRef.current = false;
+    drillActiveRef.current = false;
+    freezeActiveRef.current = false;
+    godModeActiveRef.current = false;
+    featherFallActiveRef.current = false;
+    heavyWeightActiveRef.current = false;
+
     const prevMoney = resourceStateRef.current.money;
     const prevTier = resourceStateRef.current.pickaxeTier;
     const prevLuck = resourceStateRef.current.luckMultiplier;
     const prevMoneyMult = resourceStateRef.current.moneyMultiplier;
+    const prevFortune = resourceStateRef.current.fortuneMultiplier;
     const prevAbilities = resourceStateRef.current.ownedAbilities;
+    const prevLockedItems = resourceStateRef.current.lockedItems;
+    const prevUnlockedAchievements = resourceStateRef.current.unlockedAchievements;
 
     const newState: ResourceState = {
       inventory: {},
@@ -210,8 +267,11 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
       currentZone: 'OVERWORLD',
       luckMultiplier: prevLuck,
       moneyMultiplier: prevMoneyMult,
+      fortuneMultiplier: prevFortune,
       ownedAbilities: prevAbilities,
-      abilityCooldowns: {}
+      abilityCooldowns: {},
+      lockedItems: prevLockedItems || [],
+      unlockedAchievements: prevUnlockedAchievements || []
     };
     
     // Safely call update via ref
@@ -229,13 +289,16 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
     }
     
     console.log("Game Reset. Width:", worldWidthBlocksRef.current);
-  }, [config.platform]); 
+  }, [config.platform, generateRow]); 
 
-  const useAbility = (abilityId: string) => {
-      // 1. Check if owned
+  // Initialize Game on Mount
+  useEffect(() => {
+    resetGame();
+  }, [resetGame]);
+
+  const useAbility = useCallback((abilityId: string) => {
       if (!resourceStateRef.current.ownedAbilities.includes(abilityId)) return;
       
-      // 2. Check Cooldown
       const now = Date.now();
       const readyAt = resourceStateRef.current.abilityCooldowns[abilityId] || 0;
       if (now < readyAt) return;
@@ -243,884 +306,346 @@ const Game: React.FC<GameProps> = ({ chatMessages, lastGameEvent, onResourceUpda
       const def = ABILITIES[abilityId];
       if (!def) return;
 
-      // 3. Trigger Effect
-      if (abilityId === 'tnt_bundle') {
-          for(let i=0; i<5; i++) setTimeout(() => spawnParticle('TNT'), i*200);
-      } else if (abilityId === 'magnet') {
-          magnetActiveRef.current = true;
-          setTimeout(() => { magnetActiveRef.current = false; }, 10000);
-      } else if (abilityId === 'drill') {
-          drillActiveRef.current = true;
-          setTimeout(() => { drillActiveRef.current = false; }, 5000);
-      } else if (abilityId === 'freeze') {
-          freezeActiveRef.current = true;
-          setTimeout(() => { freezeActiveRef.current = false; }, 10000);
-      } else if (abilityId === 'nuke') {
-          spawnMegaTNT('PLAYER');
+      switch(abilityId) {
+          case 'tnt_bundle': for(let i=0; i<5; i++) setTimeout(() => spawnParticle('TNT'), i*200); break;
+          case 'magnet': magnetActiveRef.current = true; setTimeout(() => { magnetActiveRef.current = false; }, 10000); break;
+          case 'drill': drillActiveRef.current = true; setTimeout(() => { drillActiveRef.current = false; }, 5000); break;
+          case 'freeze': freezeActiveRef.current = true; setTimeout(() => { freezeActiveRef.current = false; }, 10000); break;
+          case 'nuke': spawnMegaTNT('PLAYER'); break;
+          
+          // SIMPLE ACTIVE
+          case 'dash_left': pickaxeRef.current.vx = -20; break;
+          case 'dash_right': pickaxeRef.current.vx = 20; break;
+          case 'jump': pickaxeRef.current.vy = -20; break;
+          case 'dynamite': spawnParticle('TNT'); break;
+          case 'repel': 
+              debrisRef.current.forEach(d => { d.vx = (Math.random()-0.5)*30; d.vy = (Math.random()-0.5)*30; }); 
+              break;
+          case 'ball_scatter': for(let i=0; i<5; i++) spawnParticle('BALL'); break;
+          case 'mini_drill': drillActiveRef.current = true; setTimeout(() => { drillActiveRef.current = false; }, 2000); break;
+          case 'feather_fall': featherFallActiveRef.current = true; setTimeout(() => { featherFallActiveRef.current = false; }, 5000); break;
+          case 'heavy_weight': heavyWeightActiveRef.current = true; setTimeout(() => { heavyWeightActiveRef.current = false; }, 5000); break;
+          case 'loot_drop': 
+              blocksRef.current.push({
+                  x: pickaxeRef.current.x, y: pickaxeRef.current.y - 100, type: BlockType.LOOT_CRATE, hp: 10, maxHp: 10, id: `loot-${Date.now()}`, value: 5000
+              });
+              spawnParticle('BALL');
+              break;
+
+          // EXPENSIVE ACTIVE
+          case 'black_hole':
+              // Sucks blocks in radius 300, converts to inventory
+              const center = {x: pickaxeRef.current.x, y: pickaxeRef.current.y};
+              blocksRef.current = blocksRef.current.filter(b => {
+                  const dx = b.x - center.x;
+                  const dy = b.y - center.y;
+                  if (Math.sqrt(dx*dx + dy*dy) < 300 && b.type !== BlockType.BEDROCK) {
+                      addToInventory(b.type, 1);
+                      spawnDebris(b.x, b.y, '#000000');
+                      return false;
+                  }
+                  return true;
+              });
+              cameraShakeRef.current = 20;
+              break;
+          case 'antimatter_bomb':
+              cameraShakeRef.current = 100;
+              spawnDebris(pickaxeRef.current.x, pickaxeRef.current.y, '#ffffff');
+              blocksRef.current = blocksRef.current.filter(b => {
+                  const dx = b.x - pickaxeRef.current.x;
+                  const dy = b.y - pickaxeRef.current.y;
+                  return Math.sqrt(dx*dx + dy*dy) > 500 || b.type === BlockType.BEDROCK;
+              });
+              break;
+          case 'orbital_laser':
+              const colX = Math.floor(pickaxeRef.current.x / BLOCK_SIZE) * BLOCK_SIZE;
+              blocksRef.current = blocksRef.current.filter(b => b.x < colX || b.x >= colX + BLOCK_SIZE || b.type === BlockType.BEDROCK);
+              spawnDebris(pickaxeRef.current.x, pickaxeRef.current.y + 200, '#ff0000');
+              break;
+          case 'midas_touch':
+              blocksRef.current.forEach(b => {
+                  if (b.type === BlockType.STONE || b.type === BlockType.IRON) b.type = BlockType.GOLD;
+              });
+              break;
+          case 'god_mode':
+              godModeActiveRef.current = true;
+              sizeMultiplierRef.current = 3.0;
+              setTimeout(() => { godModeActiveRef.current = false; sizeMultiplierRef.current = 1.0; }, 20000);
+              break;
       }
 
-      // 4. Set Cooldown
-      if (onResourceUpdateRef.current) {
-          onResourceUpdateRef.current({
-              ...resourceStateRef.current,
-              abilityCooldowns: {
-                  ...resourceStateRef.current.abilityCooldowns,
-                  [abilityId]: now + (def.cooldown * 1000)
-              }
-          });
-      }
-  };
+      // Set Cooldown
+      onResourceUpdateRef.current({
+          ...resourceStateRef.current,
+          abilityCooldowns: {
+              ...resourceStateRef.current.abilityCooldowns,
+              [abilityId]: Date.now() + def.cooldown * 1000
+          }
+      });
 
-  // Keybinds Listener
+  }, [spawnParticle, spawnMegaTNT, addToInventory, spawnDebris]);
+
+
+  // Handle Game Events
+  useEffect(() => {
+    if (!lastGameEvent) return;
+
+    switch(lastGameEvent.action) {
+        case 'SPAWN_BALLS':
+            for(let i=0; i < (parseInt(lastGameEvent.data) || 1); i++) spawnParticle('BALL');
+            break;
+        case 'SPAWN_TNT':
+            spawnParticle('TNT');
+            break;
+        case 'SPAWN_MEGATNT':
+            spawnMegaTNT(lastGameEvent.data);
+            break;
+        case 'SET_SPEED':
+            timeScaleRef.current = lastGameEvent.data === 'fast' ? 2.0 : lastGameEvent.data === 'slow' ? 0.3 : 1.0;
+            break;
+        case 'RESIZE_PICKAXE':
+            sizeMultiplierRef.current = lastGameEvent.data === 'big' ? 2.0 : lastGameEvent.data === 'small' ? 0.5 : 1.0;
+            break;
+        case 'ACTIVATE_MAGNET': useAbility('magnet'); break;
+        case 'ACTIVATE_DRILL': useAbility('drill'); break;
+        case 'ACTIVATE_FREEZE': useAbility('freeze'); break;
+        case 'RESET_GAME': resetGame(); break;
+        case 'TRIGGER_CHALLENGE':
+             const c = CHALLENGES.find(ch => ch.id === (lastGameEvent.data as string));
+             if (c) {
+                 setActiveChallenges(prev => [...prev, {...c, remainingTime: c.duration}]);
+             }
+             break;
+        case 'SPAWN_LOOT':
+             // spawn a crate
+             blocksRef.current.push({
+                  x: pickaxeRef.current.x, y: pickaxeRef.current.y - 100, type: BlockType.LOOT_CRATE, hp: 10, maxHp: 10, id: `loot-${Date.now()}`, value: 5000
+             });
+             break;
+    }
+  }, [lastGameEvent, spawnParticle, spawnMegaTNT, resetGame, useAbility]);
+
+  // Input Handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
-      const key = e.key.toLowerCase();
-      const binds = config.keybinds;
+        const k = e.key.toLowerCase();
+        const binds = config.keybinds;
 
-      if (key === binds.restart) resetGame();
-      else if (key === binds.pause) setIsPaused(prev => !prev);
-      else if (key === binds.settings) toggleSettings();
-      else if (key === binds.leaderboard) toggleLeaderboard();
-      else if (key === binds.shop) toggleShop();
-      else if (e.key === '1') { if(resourceStateRef.current.ownedAbilities[0]) useAbility(resourceStateRef.current.ownedAbilities[0]); }
-      else if (e.key === '2') { if(resourceStateRef.current.ownedAbilities[1]) useAbility(resourceStateRef.current.ownedAbilities[1]); }
-      else if (e.key === '3') { if(resourceStateRef.current.ownedAbilities[2]) useAbility(resourceStateRef.current.ownedAbilities[2]); }
-      else if (e.key === '4') { if(resourceStateRef.current.ownedAbilities[3]) useAbility(resourceStateRef.current.ownedAbilities[3]); }
+        if (k === binds.spawnBall) spawnParticle('BALL');
+        if (k === binds.spawnTnt) spawnParticle('TNT');
+        if (k === binds.megaTnt) spawnMegaTNT('Manual');
+        if (k === binds.restart) resetGame();
+        if (k === binds.settings) toggleSettings();
+        if (k === binds.leaderboard) toggleLeaderboard();
+        if (k === binds.shop) toggleShop();
+        
+        if (k === binds.ability1) useAbility(resourceStateRef.current.ownedAbilities[0]);
+        if (k === binds.ability2) useAbility(resourceStateRef.current.ownedAbilities[1]);
+        if (k === binds.ability3) useAbility(resourceStateRef.current.ownedAbilities[2]);
+        if (k === binds.ability4) useAbility(resourceStateRef.current.ownedAbilities[3]);
+        
+        // Manual Movement
+        if (e.key === 'ArrowLeft') pickaxeRef.current.vx -= 5;
+        if (e.key === 'ArrowRight') pickaxeRef.current.vx += 5;
+        if (e.key === 'ArrowUp') pickaxeRef.current.vy -= 10;
+        if (e.key === 'ArrowDown') pickaxeRef.current.vy += 10;
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [resetGame, config.keybinds, toggleSettings, toggleLeaderboard, toggleShop]); 
+  }, [config.keybinds, resetGame, toggleSettings, toggleLeaderboard, toggleShop, useAbility, spawnParticle, spawnMegaTNT]);
 
+  // Main Loop
   useEffect(() => {
-    if (queueProcessorRef.current) clearInterval(queueProcessorRef.current);
-    queueProcessorRef.current = setInterval(() => {
-      if (megaTntQueueRef.current.length > 0) {
-        const owner = megaTntQueueRef.current.shift();
-        if (owner) spawnMegaTNT(owner);
-      }
-    }, 5000); 
+      let animationFrameId: number;
 
-    return () => {
-      if (queueProcessorRef.current) clearInterval(queueProcessorRef.current);
-    };
-  }, []);
-
-  // Safe Initialization - Removed dependency on loop/resize logic for reset
-  useEffect(() => {
-    if (blocksRef.current.length === 0) {
-        resetGame();
-    }
-  }, [resetGame]);
-
-  // Handle Chat & Monetization Events
-  useEffect(() => {
-    const latestMsg = chatMessages[chatMessages.length - 1];
-    if (latestMsg && latestMsg.isDonation) {
-        cameraShakeRef.current = 10;
-        const amount = latestMsg.donationAmount || 1;
-        
-        if (latestMsg.profileUrl) {
-            spawnProfilePic(latestMsg.profileUrl, latestMsg.user, amount);
-        } else {
-             if (amount >= 10) {
-                  megaTntQueueRef.current.push(`SUPER: ${latestMsg.user}`);
-                  activateChallenge('gold_rush');
-             } else {
-                  const p = pickaxeRef.current;
-                  const dropX = Math.floor(p.x / BLOCK_SIZE) * BLOCK_SIZE;
-                  const dropY = Math.floor((p.y - 200) / BLOCK_SIZE) * BLOCK_SIZE;
-                  blocksRef.current.push({
-                      x: dropX, y: dropY, type: BlockType.LOOT_CRATE, hp: 10, maxHp: 10, id: `loot-${Date.now()}`, value: amount * 1000
-                  });
-                  spawnParticle('BALL');
-             }
-        }
-    }
-
-    if (!config.chatControl) return;
-
-    if (lastGameEvent && lastGameEvent !== lastProcessedEventRef.current) {
-      // CHECK IF COMMAND IS DISABLED
-      if (config.disabledCommands && config.disabledCommands.includes(lastGameEvent.action)) {
-          lastProcessedEventRef.current = lastGameEvent;
-          return;
-      }
-
-      lastProcessedEventRef.current = lastGameEvent;
-      
-      switch (lastGameEvent.action) {
-        case 'SPAWN_BALLS':
-          const count = parseInt(lastGameEvent.data) || 1;
-          for(let i=0; i<count; i++) spawnParticle('BALL');
-          break;
-        case 'SPAWN_TNT':
-          spawnParticle('TNT');
-          break;
-        case 'SPAWN_MEGATNT':
-          const label = typeof lastGameEvent.data === 'string' ? lastGameEvent.data : "Chat";
-          megaTntQueueRef.current.push(label);
-          break;
-        case 'SPAWN_LOOT':
-             const p = pickaxeRef.current;
-             const dropX = Math.floor(p.x / BLOCK_SIZE) * BLOCK_SIZE;
-             const dropY = Math.floor((p.y - 200) / BLOCK_SIZE) * BLOCK_SIZE;
-             if (lastGameEvent.data === 'gold_rush') activateChallenge('gold_rush');
-             else {
-                 blocksRef.current.push({
-                      x: dropX, y: dropY, type: BlockType.LOOT_CRATE, hp: 10, maxHp: 10, id: `loot-${Date.now()}`, value: 5000
-                 });
-             }
-             break;
-        case 'SET_SPEED':
-          if (lastGameEvent.data === 'fast') timeScaleRef.current = 2.0;
-          else if (lastGameEvent.data === 'slow') timeScaleRef.current = 0.5;
-          else timeScaleRef.current = 1.0;
-          break;
-        case 'RESIZE_PICKAXE':
-          if (lastGameEvent.data === 'big') sizeMultiplierRef.current = 2.0;
-          else if (lastGameEvent.data === 'small') sizeMultiplierRef.current = 0.5;
-          else sizeMultiplierRef.current = 1.0;
-          break;
-        case 'HEAL_PICKAXE':
-           spawnDebris(pickaxeRef.current.x, pickaxeRef.current.y, '#22c55e');
-           break;
-        case 'RESET_GAME':
-           resetGame();
-           break;
-        case 'ACTIVATE_MAGNET':
-           magnetActiveRef.current = true;
-           setTimeout(() => { magnetActiveRef.current = false; }, 10000);
-           break;
-        case 'ACTIVATE_DRILL':
-           drillActiveRef.current = true;
-           setTimeout(() => { drillActiveRef.current = false; }, 5000);
-           break;
-        case 'ACTIVATE_FREEZE':
-           freezeActiveRef.current = true;
-           setTimeout(() => { freezeActiveRef.current = false; }, 10000);
-           break;
-      }
-    }
-  }, [lastGameEvent, config.chatControl, resetGame, chatMessages, config.disabledCommands]);
-
-  const activateChallenge = (id: string) => {
-      const template = CHALLENGES.find(c => c.id === id);
-      if (template) {
-          setActiveChallenges(prev => {
-              if (prev.some(c => c.id === id)) return prev; 
-              return [...prev, { ...template, remainingTime: template.duration, isActive: true }];
-          });
-      }
-  };
-
-  const spawnMegaTNT = (owner: string) => {
-     particlesRef.current.push({
-       x: pickaxeRef.current.x,
-       y: pickaxeRef.current.y,
-       vx: 0,
-       vy: 5,
-       radius: 40, 
-       rotation: 0,
-       vRotation: 0.05,
-       type: 'MEGATNT',
-       id: `megatnt-${Date.now()}`,
-       hp: 2000,
-       maxHp: 2000,
-       spawnTime: Date.now(),
-       label: owner
-     });
-  };
-
-  const spawnProfilePic = (url: string, user: string, amount: number) => {
-    if (!profileImagesRef.current.has(url)) {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.src = url;
-        profileImagesRef.current.set(url, img);
-    }
-
-    particlesRef.current.push({
-      x: pickaxeRef.current.x + (Math.random() * 20 - 10),
-      y: pickaxeRef.current.y,
-      vx: (Math.random() - 0.5) * 10,
-      vy: Math.random() * 5 + 5,
-      radius: 25,
-      rotation: 0,
-      vRotation: (Math.random() - 0.5) * 0.2,
-      type: 'PROFILE_PIC',
-      id: `profile-${Date.now()}`,
-      hp: 100, 
-      maxHp: 100,
-      imageUrl: url,
-      label: user
-    });
-  };
-
-  const spawnParticle = (type: 'BALL' | 'TNT') => {
-    particlesRef.current.push({
-      x: pickaxeRef.current.x + (Math.random() * 20 - 10),
-      y: pickaxeRef.current.y + (Math.random() * 20 - 10),
-      vx: (Math.random() - 0.5) * 15, 
-      vy: Math.random() * 5 + 5,
-      radius: type === 'TNT' ? 18 : 12,
-      rotation: Math.random() * Math.PI,
-      vRotation: (Math.random() - 0.5) * 0.4,
-      type: type,
-      id: `${type.toLowerCase()}-${Date.now()}-${Math.random()}`,
-      hp: type === 'TNT' ? 200 : 50, 
-      maxHp: type === 'TNT' ? 200 : 50,
-      spawnTime: Date.now() 
-    });
-  };
-
-  const spawnDebris = (x: number, y: number, color: string) => {
-    for(let i=0; i<6; i++) {
-      debrisRef.current.push({
-        x: x + (Math.random() * BLOCK_SIZE),
-        y: y + (Math.random() * BLOCK_SIZE),
-        vx: (Math.random() - 0.5) * 12,
-        vy: (Math.random() - 0.5) * 12,
-        color: color,
-        life: 1.0,
-        size: Math.random() * 6 + 2
-      });
-    }
-  };
-
-  const explodeMegaTNT = (tnt: PhysicsObject) => {
-     cameraShakeRef.current = 50; 
-     for(let i=0; i<30; i++) {
-         debrisRef.current.push({
-             x: tnt.x, y: tnt.y,
-             vx: (Math.random() - 0.5) * 30,
-             vy: (Math.random() - 0.5) * 30,
-             color: '#ef4444', life: 1.5, size: 8
-         });
-     }
-     
-     const explosionRadius = 250;
-     const damage = 5000;
-     
-     blocksRef.current.forEach(b => {
-         const dx = (b.x + BLOCK_SIZE/2) - tnt.x;
-         const dy = (b.y + BLOCK_SIZE/2) - tnt.y;
-         const dist = Math.sqrt(dx*dx + dy*dy);
-         if (dist < explosionRadius) {
-             b.hp -= damage * (1 - dist/explosionRadius);
-             if (Math.random() > 0.5) spawnDebris(b.x, b.y, BLOCK_COLORS[b.type]);
-         }
-     });
-
-     particlesRef.current.forEach(p => {
-         if (p === tnt) return;
-         const dx = p.x - tnt.x;
-         const dy = p.y - tnt.y;
-         const angle = Math.atan2(dy, dx);
-         const force = 50;
-         p.vx += Math.cos(angle) * force;
-         p.vy += Math.sin(angle) * force;
-     });
-  };
-
-  const explodeTNT = (tnt: PhysicsObject) => {
-     cameraShakeRef.current = 15;
-     spawnDebris(tnt.x, tnt.y, '#ef4444');
-     
-     const explosionRadius = 120; 
-     const damage = 800;
-     
-     blocksRef.current.forEach(b => {
-         const dx = (b.x + BLOCK_SIZE/2) - tnt.x;
-         const dy = (b.y + BLOCK_SIZE/2) - tnt.y;
-         const dist = Math.sqrt(dx*dx + dy*dy);
-         if (dist < explosionRadius) {
-             b.hp -= damage * (1 - dist/explosionRadius);
-             if (Math.random() > 0.5) spawnDebris(b.x, b.y, BLOCK_COLORS[b.type]);
-         }
-     });
-  };
-
-  const explodeMini = (obj: PhysicsObject) => {
-    const explosionRadius = 60; 
-    const damage = 100;
-
-    blocksRef.current.forEach(b => {
-        const dx = (b.x + BLOCK_SIZE/2) - obj.x;
-        const dy = (b.y + BLOCK_SIZE/2) - obj.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < explosionRadius) {
-            b.hp -= damage;
-            if (b.hp <= 0 || Math.random() > 0.8) spawnDebris(b.x, b.y, BLOCK_COLORS[b.type]);
-        }
-    });
-  };
-
-  const updatePhysics = () => {
-    let effectiveGravity = GRAVITY;
-    const isGoldRush = activeChallenges.some(c => c.effect === 'GOLD_RUSH');
-    const isLowGrav = activeChallenges.some(c => c.effect === 'GRAVITY_LOW');
-    const isTntStorm = activeChallenges.some(c => c.effect === 'TNT_STORM');
-
-    if (isLowGrav) effectiveGravity *= 0.5;
-    if (isTntStorm && Math.random() < 0.05) spawnParticle('TNT');
-
-    let effectiveTimeScale = timeScaleRef.current;
-    if (freezeActiveRef.current) effectiveTimeScale *= 0.1;
-
-    pickaxeRef.current.radius = 20 * sizeMultiplierRef.current;
-    
-    // Dynamic Width Boundary
-    const worldWidthPx = worldWidthBlocksRef.current * BLOCK_SIZE;
-
-    particlesRef.current = particlesRef.current.filter(p => {
-        if (p.hp <= 0 && p.type !== 'PICKAXE') { 
-            spawnDebris(p.x, p.y, p.type === 'PROFILE_PIC' ? '#fbbf24' : '#a855f7');
-            return false;
-        }
-        return p.y < cameraYRef.current + 1500;
-    });
-
-    const allObjects = [pickaxeRef.current, ...particlesRef.current];
-    
-    // Magnet Effect: Pull debris/loot towards pickaxe
-    if (magnetActiveRef.current) {
-        debrisRef.current.forEach(d => {
-            const dx = pickaxeRef.current.x - d.x;
-            const dy = pickaxeRef.current.y - d.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < 400) {
-                d.vx += (dx / dist) * 2;
-                d.vy += (dy / dist) * 2;
-            }
-        });
-        // Also pull physics objects like balls/tnt if close
-        particlesRef.current.forEach(p => {
-            const dx = pickaxeRef.current.x - p.x;
-            const dy = pickaxeRef.current.y - p.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < 300 && p.type !== 'MEGATNT') {
-                p.vx += (dx / dist) * 0.5;
-                p.vy += (dy / dist) * 0.5;
-            }
-        });
-    }
-
-    // Object Collision
-    for (const p of particlesRef.current) {
-        if (p.type === 'MEGATNT') continue; 
-        const dx = p.x - pickaxeRef.current.x;
-        const dy = p.y - pickaxeRef.current.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const minDist = p.radius + pickaxeRef.current.radius;
-
-        if (dist < minDist) {
-           const angle = Math.atan2(dy, dx);
-           const sin = Math.sin(angle);
-           const cos = Math.cos(angle);
-           const vx1 = pickaxeRef.current.vx * cos + pickaxeRef.current.vy * sin;
-           const vy1 = pickaxeRef.current.vy * cos - pickaxeRef.current.vx * sin;
-           const vx2 = p.vx * cos + p.vy * sin;
-           const vy2 = p.vy * cos - p.vx * sin;
-           const vx1Final = vx2;
-           const vx2Final = vx1;
-           const pVX = vx1Final * cos - vy1 * sin;
-           const pVY = vy1 * cos + vx1Final * sin;
-           const particleVX = vx2Final * cos - vy2 * sin;
-           const particleVY = vy2 * cos + vx2Final * sin;
-           pickaxeRef.current.vx = pVX;
-           pickaxeRef.current.vy = pVY;
-           p.vx = particleVX;
-           p.vy = particleVY;
-           const overlap = minDist - dist;
-           pickaxeRef.current.x -= overlap * cos * 0.5;
-           pickaxeRef.current.y -= overlap * sin * 0.5;
-           p.x += overlap * cos * 0.5;
-           p.y += overlap * sin * 0.5;
-        }
-    }
-
-    allObjects.forEach(obj => {
-      if (obj.type === 'MEGATNT' && obj.spawnTime) {
-         if (Date.now() - obj.spawnTime > 4000) {
-             explodeMegaTNT(obj);
-             obj.hp = 0; 
-             return; 
-         }
-      }
-
-      if (obj.type === 'TNT' && obj.spawnTime) {
-          if (Date.now() - obj.spawnTime > 4000) {
-              explodeTNT(obj);
-              obj.hp = 0;
-              return;
-          }
-      }
-
-      obj.vy += effectiveGravity * effectiveTimeScale;
-      obj.vx *= FRICTION;
-      obj.y += obj.vy * effectiveTimeScale;
-      obj.x += obj.vx * effectiveTimeScale;
-      obj.rotation += obj.vRotation * effectiveTimeScale;
-
-      if (obj.x < BLOCK_SIZE) {
-        obj.x = BLOCK_SIZE;
-        obj.vx *= -0.95;
-      }
-      if (obj.x > worldWidthPx - BLOCK_SIZE) {
-        obj.x = worldWidthPx - BLOCK_SIZE;
-        obj.vx *= -0.95;
-      }
-
-      const gridX = Math.floor(obj.x / BLOCK_SIZE);
-      const gridY = Math.floor(obj.y / BLOCK_SIZE);
-      
-      for(let by = gridY - 1; by <= gridY + 1; by++) {
-        for(let bx = gridX - 1; bx <= gridX + 1; bx++) {
-             const blockIndex = blocksRef.current.findIndex(b => b.x === bx * BLOCK_SIZE && b.y === by * BLOCK_SIZE);
-             if (blockIndex !== -1) {
-               const block = blocksRef.current[blockIndex];
-               if (block.type === BlockType.AIR) continue;
-
-               if (
-                 obj.x + obj.radius > block.x &&
-                 obj.x - obj.radius < block.x + BLOCK_SIZE &&
-                 obj.y + obj.radius > block.y &&
-                 obj.y - obj.radius < block.y + BLOCK_SIZE
-               ) {
-                 const dx = obj.x - (block.x + BLOCK_SIZE / 2);
-                 const dy = obj.y - (block.y + BLOCK_SIZE / 2);
-                 const angle = Math.atan2(dy, dx);
-                 const pushForce = Math.max(Math.abs(obj.vx), Math.abs(obj.vy)) * 0.8 + 2;
-                 obj.vx = Math.cos(angle) * pushForce;
-                 obj.vy = Math.sin(angle) * pushForce;
-
-                 let damage = 0;
-                 const velocity = Math.sqrt(obj.vx*obj.vx + obj.vy*obj.vy);
-
-                 if (obj.type === 'TNT') {
-                    damage = velocity * 10 + 20; 
-                 } else if (obj.type === 'MEGATNT') {
-                    damage = 500; 
-                 } else if (obj.type === 'PICKAXE') {
-                    const currentTier = PICKAXE_TIERS.find(t => t.id === resourceStateRef.current.pickaxeTier) || PICKAXE_TIERS[0];
-                    damage = velocity * 6 + currentTier.damage;
-                    if (drillActiveRef.current) damage *= 3; // Drill multiplier
-                 } else if (obj.type === 'BALL') {
-                    damage = velocity * 5 + 10; 
-                    obj.hp -= 25; 
-                 } else if (obj.type === 'PROFILE_PIC') {
-                    explodeMini(obj);
-                    damage = 200; 
-                    obj.hp -= 34; 
-                 }
-
-                 if (damage > 0) {
-                     block.hp -= damage;
-                     if (drillActiveRef.current && obj.type === 'PICKAXE') {
-                         block.hp -= damage; // Double tick for drill
-                         spawnDebris(block.x, block.y, BLOCK_COLORS[block.type]);
-                     }
-                     if (block.hp <= 0 || Math.random() > 0.7) {
-                        spawnDebris(block.x, block.y, block.type === BlockType.LOOT_CRATE ? '#10b981' : BLOCK_COLORS[block.type]);
-                     }
-                 }
-               }
-             }
-        }
-      }
-    });
-
-    debrisRef.current.forEach(d => {
-        d.x += d.vx * effectiveTimeScale;
-        d.y += d.vy * effectiveTimeScale;
-        d.vy += effectiveGravity * 0.5 * effectiveTimeScale;
-        d.life -= 0.02 * effectiveTimeScale;
-    });
-    debrisRef.current = debrisRef.current.filter(d => d.life > 0);
-
-    for (let i = blocksRef.current.length - 1; i >= 0; i--) {
-      const b = blocksRef.current[i];
-      if (b.hp <= 0 && b.type !== BlockType.BEDROCK && b.type !== BlockType.AIR) {
-        const stats = resourceStateRef.current;
-        const def = BLOCK_DEFINITIONS[b.type] || BLOCK_DEFINITIONS[BlockType.STONE];
-        stats.score += def.value;
-
-        if (b.type === BlockType.LOOT_CRATE) {
-            cameraShakeRef.current = 5;
-            spawnDebris(b.x, b.y, '#10b981');
-            const multiplier = stats.moneyMultiplier || 1;
-            stats.money += (b.value || 0) * multiplier;
-        } else {
-            // Dynamic Inventory Update
-            if (!stats.inventory[b.type]) {
-                stats.inventory[b.type] = 0;
-            }
-            stats.inventory[b.type]++;
-        }
-        blocksRef.current.splice(i, 1);
-      }
-    }
-    
-    const targetCamY = pickaxeRef.current.y - 300;
-    if (targetCamY > cameraYRef.current) {
-      cameraYRef.current += (targetCamY - cameraYRef.current) * 0.1;
-    }
-
-    const lowestBlockY = blocksRef.current.length > 0 ? blocksRef.current[blocksRef.current.length - 1].y : 0;
-    if (lowestBlockY < cameraYRef.current + 1200) {
-      const startRow = Math.floor(lowestBlockY / BLOCK_SIZE) + 1;
-      for (let i = 0; i < 5; i++) {
-        blocksRef.current.push(...generateRow(startRow + i, isGoldRush));
-      }
-    }
-    
-    blocksRef.current = blocksRef.current.filter(b => b.y > cameraYRef.current - 400);
-
-    const depth = Math.floor(pickaxeRef.current.y / BLOCK_SIZE);
-    resourceStateRef.current.depth = depth;
-
-    // Check Zone Change
-    const currentZone = getZoneForDepth(depth);
-    if (currentZone.id !== currentZoneRef.current.id) {
-        currentZoneRef.current = currentZone;
-        resourceStateRef.current.currentZone = currentZone.name;
-        setZoneNotification(currentZone);
-        setTimeout(() => setZoneNotification(null), 5000); // Hide after 5s
-    }
-
-    // Call update via ref to avoid closure issues in loop
-    if (onResourceUpdateRef.current) {
-        onResourceUpdateRef.current({...resourceStateRef.current});
-    }
-    if (onDepthUpdateRef.current) {
-        onDepthUpdateRef.current(depth);
-    }
-
-    if (cameraShakeRef.current > 0) cameraShakeRef.current *= 0.9;
-    if (cameraShakeRef.current < 0.5) cameraShakeRef.current = 0;
-  };
-
-  const drawProceduralPickaxe = (ctx: CanvasRenderingContext2D, tierId: string) => {
-    const tier = PICKAXE_TIERS.find(t => t.id === tierId) || PICKAXE_TIERS[0];
-    const isSpecial = ['diamond', 'netherite', 'void', 'cosmic', 'finality'].includes(tierId);
-    const isGlowing = ['void', 'cosmic', 'finality'].includes(tierId) || drillActiveRef.current;
-    
-    // Scale Context
-    const size = 50 * sizeMultiplierRef.current;
-    ctx.scale(sizeMultiplierRef.current, sizeMultiplierRef.current);
-    
-    // Shadow/Glow
-    if (isGlowing) {
-        ctx.shadowColor = drillActiveRef.current ? '#ef4444' : tier.color;
-        ctx.shadowBlur = drillActiveRef.current ? 30 : 20;
-    }
-
-    // 1. Handle (Wood/Stick)
-    ctx.fillStyle = '#78350f'; // Dark wood
-    ctx.fillRect(-4, 0, 8, 30);
-    // Handle Detail
-    ctx.fillStyle = '#92400e';
-    ctx.fillRect(-2, 5, 4, 20);
-
-    // 2. Head Shape
-    ctx.fillStyle = tier.color;
-    ctx.beginPath();
-    
-    if (isSpecial) {
-        // Double-headed aggressive shape
-        ctx.moveTo(-30, -10);
-        ctx.bezierCurveTo(-15, -25, 15, -25, 30, -10); // Top curve
-        ctx.lineTo(25, -5);
-        ctx.bezierCurveTo(15, -15, -15, -15, -25, -5); // Inner curve
-        ctx.lineTo(-30, -10);
-    } else {
-        // Classic crescent
-        ctx.moveTo(-25, -5);
-        ctx.quadraticCurveTo(0, -30, 25, -5);
-        ctx.quadraticCurveTo(0, -15, -25, -5);
-    }
-    ctx.fill();
-
-    // 3. Head Bevel/Highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.beginPath();
-    if (isSpecial) {
-        ctx.moveTo(-28, -10);
-        ctx.bezierCurveTo(-15, -22, 15, -22, 28, -10);
-        ctx.lineTo(25, -8);
-        ctx.bezierCurveTo(15, -18, -15, -18, -25, -8);
-    } else {
-        ctx.moveTo(-22, -6);
-        ctx.quadraticCurveTo(0, -25, 22, -6);
-        ctx.quadraticCurveTo(0, -12, -22, -6);
-    }
-    ctx.fill();
-
-    // 4. Binding
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(-5, -8, 10, 8);
-
-    // Reset Glow
-    ctx.shadowBlur = 0;
-  };
-
-  const draw = (ctx: CanvasRenderingContext2D) => {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    ctx.save();
-    const shakeX = (Math.random() - 0.5) * cameraShakeRef.current;
-    const shakeY = (Math.random() - 0.5) * cameraShakeRef.current;
-    ctx.translate(shakeX, -cameraYRef.current + shakeY);
-
-    debrisRef.current.forEach(d => {
-        ctx.globalAlpha = d.life;
-        ctx.fillStyle = d.color;
-        ctx.fillRect(d.x, d.y, d.size, d.size);
-    });
-    ctx.globalAlpha = 1.0;
-
-    blocksRef.current.forEach(block => {
-      if (block.type === BlockType.LOOT_CRATE) {
-          ctx.fillStyle = '#10b981'; 
-          ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-          ctx.strokeStyle = '#34d399';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-          ctx.fillStyle = 'white';
-          ctx.font = 'bold 12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('$', block.x + BLOCK_SIZE/2, block.y + BLOCK_SIZE/2 + 4);
-      } else {
-          const def = BLOCK_DEFINITIONS[block.type];
-          ctx.fillStyle = def ? def.color : '#475569';
+      const loop = () => {
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
           
-          if (block.variant === 1) { // Darker
-             ctx.filter = 'brightness(0.8)';
-          } else if (block.variant === 2) { // Lighter
-             ctx.filter = 'brightness(1.2)';
+          if (canvas && ctx) {
+              const width = canvas.width;
+              const height = canvas.height;
+              
+              // Clear
+              ctx.clearRect(0, 0, width, height);
+              
+              // Camera Follow
+              const targetY = pickaxeRef.current.y - height / 3;
+              cameraYRef.current += (targetY - cameraYRef.current) * 0.1;
+              
+              // Apply Shake
+              const shakeX = (Math.random() - 0.5) * cameraShakeRef.current;
+              const shakeY = (Math.random() - 0.5) * cameraShakeRef.current;
+              cameraShakeRef.current = Math.max(0, cameraShakeRef.current * 0.9);
+
+              ctx.save();
+              ctx.translate(-shakeX, -cameraYRef.current - shakeY);
+              
+              // Draw Blocks
+              const visibleTop = cameraYRef.current;
+              const visibleBottom = cameraYRef.current + height;
+              
+              // Generate new blocks if needed
+              const bottomBlockY = blocksRef.current.length > 0 ? blocksRef.current[blocksRef.current.length - 1].y : 0;
+              if (bottomBlockY < visibleBottom + 500) {
+                  const startRow = Math.floor(bottomBlockY / BLOCK_SIZE) + 1;
+                  for (let i = 0; i < 5; i++) {
+                      blocksRef.current.push(...generateRow(startRow + i, activeChallenges.some(c => c.effect === 'GOLD_RUSH')));
+                  }
+              }
+
+              // Update & Draw Blocks
+              blocksRef.current.forEach((block, index) => {
+                  if (block.y + BLOCK_SIZE < visibleTop || block.y > visibleBottom) return;
+
+                  // Simple Rendering
+                  ctx.fillStyle = BLOCK_COLORS[block.type] || '#ccc';
+                  ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
+                  
+                  // HP Overlay
+                  if (block.hp < block.maxHp) {
+                      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                      const ratio = block.hp / block.maxHp;
+                      ctx.fillRect(block.x + BLOCK_SIZE/4, block.y + BLOCK_SIZE/2, (BLOCK_SIZE/2) * ratio, 4);
+                  }
+              });
+
+              // Update Pickaxe Physics
+              const pickaxe = pickaxeRef.current;
+              let g = activeChallenges.some(c => c.effect === 'GRAVITY_LOW') || featherFallActiveRef.current ? GRAVITY * 0.5 : heavyWeightActiveRef.current ? GRAVITY * 2 : GRAVITY;
+              if (freezeActiveRef.current) g = 0;
+
+              pickaxe.vy += g * timeScaleRef.current;
+              pickaxe.vx *= FRICTION;
+              
+              pickaxe.x += pickaxe.vx * timeScaleRef.current;
+              pickaxe.y += pickaxe.vy * timeScaleRef.current;
+
+              // Pickaxe Collision with Blocks
+              // Simple circle vs AABB
+              const pRadius = pickaxe.radius * sizeMultiplierRef.current;
+              const damage = (PICKAXE_TIERS.find(t => t.id === resourceStateRef.current.pickaxeTier)?.damage || 10) * (drillActiveRef.current ? 5 : 1);
+
+              blocksRef.current = blocksRef.current.filter(block => {
+                  if (block.y + BLOCK_SIZE < pickaxe.y - pRadius - 100 || block.y > pickaxe.y + pRadius + 100) return true;
+
+                  const closestX = Math.max(block.x, Math.min(pickaxe.x, block.x + BLOCK_SIZE));
+                  const closestY = Math.max(block.y, Math.min(pickaxe.y, block.y + BLOCK_SIZE));
+                  
+                  const dx = pickaxe.x - closestX;
+                  const dy = pickaxe.y - closestY;
+                  const distance = Math.sqrt(dx * dx + dy * dy);
+
+                  if (distance < pRadius) {
+                      // Collision
+                      // Bounce
+                      if (Math.abs(dx) > Math.abs(dy)) pickaxe.vx *= -0.8;
+                      else pickaxe.vy *= -0.5;
+                      
+                      // Damage Block
+                      if (!freezeActiveRef.current) {
+                          block.hp -= damage;
+                          spawnDebris(closestX, closestY, BLOCK_COLORS[block.type]);
+                      }
+
+                      if (block.hp <= 0 && block.type !== BlockType.BEDROCK) {
+                          addToInventory(block.type, 1);
+                          return false; // Remove block
+                      }
+                  }
+                  return true;
+              });
+              
+              // World Boundaries
+              if (pickaxe.x < pRadius) { pickaxe.x = pRadius; pickaxe.vx *= -0.8; }
+              if (pickaxe.x > width - pRadius) { pickaxe.x = width - pRadius; pickaxe.vx *= -0.8; }
+
+              // Draw Pickaxe
+              ctx.save();
+              ctx.translate(pickaxe.x, pickaxe.y);
+              ctx.rotate(pickaxe.rotation);
+              pickaxe.rotation += pickaxe.vRotation;
+              ctx.fillStyle = PICKAXE_TIERS.find(t => t.id === resourceStateRef.current.pickaxeTier)?.color || '#fff';
+              ctx.beginPath();
+              ctx.arc(0, 0, pRadius, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+
+              // Magnet Logic
+              if (magnetActiveRef.current) {
+                  // Sucks debris or loose items (simulated)
+                  // For visual effect, draw lines to nearby blocks
+              }
+
+              // Update & Draw Debris
+              debrisRef.current.forEach((d, i) => {
+                  d.x += d.vx;
+                  d.y += d.vy;
+                  d.vy += GRAVITY;
+                  d.life -= 0.02;
+                  
+                  ctx.fillStyle = d.color;
+                  ctx.globalAlpha = Math.max(0, d.life);
+                  ctx.fillRect(d.x, d.y, d.size, d.size);
+                  ctx.globalAlpha = 1;
+              });
+              debrisRef.current = debrisRef.current.filter(d => d.life > 0);
+
+              // Update & Draw Particles (TNT, Balls)
+              particlesRef.current.forEach((p, i) => {
+                  p.vy += GRAVITY * timeScaleRef.current;
+                  p.x += p.vx * timeScaleRef.current;
+                  p.y += p.vy * timeScaleRef.current;
+                  
+                  // Simple floor collision logic (simplified)
+                  if (p.y > cameraYRef.current + height) {
+                      p.hp = 0; // Remove if off screen
+                  }
+
+                  // TNT Logic
+                  if ((p.type === 'TNT' || p.type === 'MEGATNT') && Math.random() < 0.01) {
+                      // Explode
+                      const radius = p.type === 'MEGATNT' ? 150 : 60;
+                      cameraShakeRef.current += p.type === 'MEGATNT' ? 20 : 5;
+                      spawnDebris(p.x, p.y, '#ff0000');
+                      
+                      blocksRef.current = blocksRef.current.filter(b => {
+                          const dx = b.x - p.x;
+                          const dy = b.y - p.y;
+                          const dist = Math.sqrt(dx*dx + dy*dy);
+                          if (dist < radius && b.type !== BlockType.BEDROCK) {
+                              if (b.type !== BlockType.STONE) addToInventory(b.type, 1);
+                              return false;
+                          }
+                          return true;
+                      });
+                      p.hp = 0;
+                  }
+                  
+                  ctx.fillStyle = p.type === 'TNT' ? 'red' : p.type === 'MEGATNT' ? 'darkred' : 'white';
+                  ctx.beginPath();
+                  ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                  ctx.fill();
+              });
+              particlesRef.current = particlesRef.current.filter(p => p.hp > 0);
+
+              // Update Depth in Global State
+              const depth = Math.floor(pickaxe.y / BLOCK_SIZE);
+              if (depth !== resourceStateRef.current.depth && depth > 0) {
+                  onDepthUpdateRef.current(depth);
+              }
+
+              ctx.restore();
           }
-
-          ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-          ctx.filter = 'none'; 
-          
-          if (block.type === BlockType.STONE && texturesRef.current['stone']) {
-             ctx.drawImage(texturesRef.current['stone'], block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-          } else if (block.type !== BlockType.STONE && block.type !== BlockType.BEDROCK && texturesRef.current['ore']) {
-             ctx.globalAlpha = 0.5;
-             ctx.drawImage(texturesRef.current['ore'], block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-             ctx.globalAlpha = 1.0;
-          }
-
-          if (block.type === BlockType.EVENT_HORIZON_CORE) {
-               ctx.strokeStyle = 'white';
-               ctx.lineWidth = 2;
-               ctx.strokeRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-          }
-      }
-      
-      if (block.hp < block.maxHp) {
-        ctx.fillStyle = `rgba(0,0,0, ${1 - (block.hp / block.maxHp)})`;
-        ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
-      }
-    });
-
-    const p = pickaxeRef.current;
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    
-    // Magnet Visual
-    if (magnetActiveRef.current) {
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.arc(0, 0, 300, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
-        ctx.fill();
-    }
-
-    // Drill Rotation
-    if (drillActiveRef.current) {
-        p.rotation += 0.5;
-    }
-
-    ctx.rotate(p.rotation);
-    
-    if (texturesRef.current['pickaxe']) {
-       const size = 50 * sizeMultiplierRef.current;
-       ctx.drawImage(texturesRef.current['pickaxe'], -size/2, -size/2, size, size);
-    } else {
-       drawProceduralPickaxe(ctx, resourceStateRef.current.pickaxeTier);
-    }
-    ctx.restore();
-
-    particlesRef.current.forEach(p => {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        
-        const hpPct = Math.max(0, p.hp / p.maxHp);
-        
-        if (p.type === 'MEGATNT') {
-            ctx.fillStyle = '#334155';
-            ctx.fillRect(-30, -p.radius - 25, 60, 6);
-            ctx.fillStyle = '#ef4444';
-            ctx.fillRect(-30, -p.radius - 25, 60 * hpPct, 6);
-        } else if (p.type === 'PROFILE_PIC') {
-             ctx.fillStyle = '#334155';
-             ctx.fillRect(-20, -p.radius - 15, 40, 5);
-             ctx.fillStyle = '#ec4899'; 
-             ctx.fillRect(-20, -p.radius - 15, 40 * hpPct, 5);
-        }
-
-        ctx.rotate(p.rotation);
-        
-        if (p.type === 'MEGATNT') {
-             const pulse = Math.sin(Date.now() / 100);
-             ctx.fillStyle = pulse > 0 ? '#ef4444' : '#ffffff';
-             ctx.fillRect(-p.radius, -p.radius, p.radius*2, p.radius*2);
-             ctx.fillStyle = 'black';
-             ctx.font = 'bold 16px sans-serif';
-             ctx.textAlign = 'center';
-             ctx.textBaseline = 'middle';
-             ctx.fillText('MEGA', 0, -10);
-             ctx.fillText('TNT', 0, 10);
-             if (p.label) {
-                 ctx.fillStyle = 'white';
-                 ctx.font = '12px sans-serif';
-                 ctx.fillText(p.label, 0, -p.radius - 15);
-             }
-        } else if (p.type === 'TNT') {
-             const age = Date.now() - (p.spawnTime || 0);
-             const isFlashing = age > 3000 && Math.floor(Date.now() / 100) % 2 === 0;
-
-             ctx.fillStyle = isFlashing ? '#ffffff' : '#ef4444';
-             ctx.fillRect(-12, -12, 24, 24);
-             ctx.fillStyle = isFlashing ? '#ef4444' : 'white';
-             ctx.font = 'bold 10px sans-serif';
-             ctx.textAlign = 'center';
-             ctx.fillText('TNT', 0, 0);
-             
-             if (Math.random() > 0.5) {
-                 ctx.fillStyle = '#fbbf24';
-                 ctx.fillRect(5, -18, 4, 4);
-             }
-        } else if (p.type === 'PROFILE_PIC') {
-             if (p.imageUrl && profileImagesRef.current.has(p.imageUrl)) {
-                 const img = profileImagesRef.current.get(p.imageUrl);
-                 if (img) {
-                     ctx.beginPath();
-                     ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-                     ctx.closePath();
-                     ctx.clip();
-                     ctx.drawImage(img, -p.radius, -p.radius, p.radius*2, p.radius*2);
-                 }
-             } else {
-                 ctx.fillStyle = '#fbbf24';
-                 ctx.beginPath();
-                 ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-                 ctx.fill();
-             }
-        } else {
-            if (texturesRef.current['ball']) {
-               ctx.drawImage(texturesRef.current['ball'], -p.radius, -p.radius, p.radius*2, p.radius*2);
-            } else {
-               ctx.fillStyle = '#a855f7';
-               ctx.beginPath();
-               ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-               ctx.fill();
-               ctx.fillStyle = 'rgba(255,255,255,0.4)';
-               ctx.beginPath();
-               ctx.arc(-p.radius*0.3, -p.radius*0.3, p.radius*0.2, 0, Math.PI * 2);
-               ctx.fill();
-            }
-        }
-        ctx.restore();
-    });
-
-    ctx.restore();
-  };
-
-  const loop = useCallback(() => {
-    if (isSettingsOpen || isLeaderboardOpen || isPaused || isShopOpen) {
-       if ((isPaused || isLeaderboardOpen || isShopOpen) && canvasRef.current) {
-          const ctx = canvasRef.current.getContext('2d');
-          if (ctx) {
-              draw(ctx);
-              ctx.fillStyle = 'rgba(0,0,0,0.5)';
-              ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-          }
-       }
-       frameIdRef.current = requestAnimationFrame(loop);
-       return; 
-    }
-
-    updatePhysics();
-    if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) draw(ctx);
-    }
-    frameIdRef.current = requestAnimationFrame(loop);
-  }, [isSettingsOpen, isLeaderboardOpen, isPaused, activeChallenges, isShopOpen]); 
-
-  // Initialization & Loop Startup
-  useEffect(() => {
-    if (containerRef.current && canvasRef.current) {
-       canvasRef.current.width = window.innerWidth;
-       canvasRef.current.height = window.innerHeight;
-       worldWidthBlocksRef.current = Math.ceil(window.innerWidth / BLOCK_SIZE);
-    }
-    
-    const handleResize = () => {
-        if (canvasRef.current) {
-            canvasRef.current.width = window.innerWidth;
-            canvasRef.current.height = window.innerHeight;
-            worldWidthBlocksRef.current = Math.ceil(window.innerWidth / BLOCK_SIZE);
-        }
-    };
-    
-    window.addEventListener('resize', handleResize);
-    
-    // Start Loop
-    frameIdRef.current = requestAnimationFrame(loop);
-    
-    return () => {
-        cancelAnimationFrame(frameIdRef.current);
-        window.removeEventListener('resize', handleResize);
-    };
-  }, [loop]);
+          animationFrameId = requestAnimationFrame(loop);
+      };
+      animationFrameId = requestAnimationFrame(loop);
+      return () => cancelAnimationFrame(animationFrameId);
+  }, [activeChallenges, addToInventory, generateRow, spawnDebris]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 w-full h-full bg-[#0B0F19] overflow-hidden">
-       <canvas ref={canvasRef} className="block" />
-       
-       <div className="absolute top-24 right-6 flex flex-col gap-2 items-end z-20">
-           {timeScaleRef.current !== 1.0 && (
-              <div className="bg-red-500/80 text-white font-bold px-3 py-1 rounded animate-pulse shadow-lg">
-                SPEED: {timeScaleRef.current}x
-              </div>
-           )}
-           {activeChallenges.map(c => (
-              <div key={c.id} className="bg-yellow-500/90 text-black font-black px-4 py-2 rounded-lg shadow-lg border-2 border-yellow-300 animate-bounce">
-                  {c.name} ({c.remainingTime}s)
-              </div>
-           ))}
-       </div>
-
-       {/* ZONE TRANSITION ANIMATION */}
-       {zoneNotification && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
-               <div className="bg-black/80 backdrop-blur-xl border-y-4 border-white/20 w-full py-10 flex flex-col items-center justify-center animate-in zoom-in-50 duration-500">
-                    <h1 className="text-6xl font-black text-white tracking-widest uppercase drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] animate-pulse">
-                        ENTERING {zoneNotification.name.replace(' ZONE', '')}
-                    </h1>
-                    <div className="text-2xl font-mono text-cyan-400 mt-2 font-bold tracking-widest">
-                        // DANGER LEVEL INCREASED //
-                    </div>
-               </div>
-          </div>
-       )}
+    <div ref={containerRef} className="w-full h-full relative cursor-none overflow-hidden">
+        <canvas ref={canvasRef} className="block w-full h-full" />
     </div>
   );
 };

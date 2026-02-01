@@ -20,7 +20,14 @@ export enum BlockType {
   ORICHALCUM = 16,
   PALLADIUM = 17,
 
-  // UNDERWORLD
+  // CRYSTAL DEPTHS
+  CRYSTAL_STONE = 50,
+  AMETHYST_CLUSTER = 51,
+  SAPPHIRE_ORE = 52,
+  RUBY_ORE = 53,
+  PRISMARINE = 54,
+
+  // UNDERWORLD & MAGMA
   ASHSTONE = 100,
   BRIMSTONE = 101,
   SULFUR_ORE = 102,
@@ -36,8 +43,26 @@ export enum BlockType {
   BLACK_NETHERITE = 112,
   ABYSSAL_ALLOY = 113,
   UNDERSTEEL = 114,
+  IGNIS_ORE = 115,
+  MAGMA_ROCK = 116,
+  CINDER_COAL = 117,
+  PHOENIX_DUST = 118,
+  
+  // BONE & CATACOMBS
+  FOSSIL_BLOCK = 130,
+  ANCIENT_BONE = 131,
+  HEMOLITH = 132,
+  CRIMSON_QUARTZ = 133,
+  ONYX_ORE = 134,
+  DARK_GRANITE = 135,
+  
+  // INDUSTRIAL / SMELTER
+  FLUX_STONE = 150,
+  MOLTEN_IRON = 151,
+  ACID_ROCK = 152,
+  TOXIC_WASTE = 153,
 
-  // VOID
+  // VOID & FRACTURED
   VOID_SHARD = 200,
   FRACTURED_OBSIDIAN = 201,
   NULLSTONE = 202,
@@ -56,6 +81,23 @@ export enum BlockType {
   VOID_STEEL = 215,
   PRIMORDIAL_VOID = 216,
   ORIGIN_MATTER = 217,
+  
+  // ADVANCED ZONES
+  GLITCH_STONE = 300,
+  ANTI_GRAVITE = 301,
+  SHADOW_STONE = 302,
+  UMBRA_ORE = 303,
+  GAP_STONE = 304,
+  DEADSTONE = 305,
+  NECROTIC_ORE = 306,
+  ABYSSAL_CORE = 307,
+  TOMBSTONE_FRAGMENT = 308,
+  OMEGA_STONE = 309,
+  DIVINE_SCAR = 310,
+  GODSCAR_ORE = 311,
+  CORE_ESSENCE = 312,
+  BLEEDING_REALITY = 313,
+  NOTHINGNESS = 314,
 
   BEDROCK = 999,
   LOOT_CRATE = 888
@@ -170,8 +212,13 @@ export interface ResourceState {
   currentZone: string;
   luckMultiplier: number;
   moneyMultiplier: number;
+  fortuneMultiplier?: number; // Chance to double items
   ownedAbilities: string[]; // IDs of unlocked active abilities
   abilityCooldowns: Record<string, number>; // Ability ID -> Timestamp when ready
+  
+  // QoL & Progression
+  lockedItems: number[]; // BlockType IDs that are locked from selling
+  unlockedAchievements: string[]; // IDs of unlocked achievements
 }
 
 export interface GameEvent {
@@ -207,12 +254,21 @@ export interface Challenge {
   remainingTime: number;
 }
 
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  condition: (state: ResourceState) => boolean;
+  icon: string; // Lucide Icon name
+  reward?: string;
+}
+
 export type ZoneType = 'OVERWORLD' | 'UNDERWORLD' | 'VOID';
 
 export interface ZoneConfig {
-  id: ZoneType;
+  id: string;
   name: string;
-  startDepth: number; // In blocks (approx 1m per block for simplicity, or 1000 threshold logic)
+  startDepth: number; 
   color: string;
   blocks: { type: BlockType; chance: number }[];
   baseBlock: BlockType;

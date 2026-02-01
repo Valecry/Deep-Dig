@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ResourceState, BlockType, AbilityDef } from '../types';
 import { PICKAXE_TIERS, BLOCK_DEFINITIONS, ABILITIES } from '../constants';
-import { X, ShoppingCart, TrendingUp, Zap, Hammer, Bomb, Magnet, Disc, Snowflake, Radiation, Wrench, DollarSign } from 'lucide-react';
+import { X, ShoppingCart, TrendingUp, Zap, Hammer, Bomb, Magnet, Disc, Snowflake, Radiation, Wrench, DollarSign, Lock, Unlock } from 'lucide-react';
 
 interface ShopProps {
     isOpen: boolean;
@@ -11,9 +11,10 @@ interface ShopProps {
     onSellAll: () => void;
     onBuyUpgrade: (tierId: string, cost: number) => void;
     onBuyAbility: (abilityId: string, cost: number) => void;
+    onToggleLock: (type: number) => void;
 }
 
-const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, onBuyUpgrade, onBuyAbility }) => {
+const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, onBuyUpgrade, onBuyAbility, onToggleLock }) => {
     const [activeTab, setActiveTab] = useState<'sell' | 'upgrades'>('sell');
 
     if (!isOpen) return null;
@@ -21,10 +22,13 @@ const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, 
     const currentTierIndex = PICKAXE_TIERS.findIndex(t => t.id === resourceState.pickaxeTier);
     const nextTier = PICKAXE_TIERS[currentTierIndex + 1];
 
-    // Calculate total sell value
+    // Calculate total sell value, skipping locked items
     let totalValue = 0;
+    const locked = resourceState.lockedItems || [];
     Object.entries(resourceState.inventory).forEach(([typeStr, count]) => {
         const type = parseInt(typeStr) as BlockType;
+        if (locked.includes(type)) return;
+
         const def = BLOCK_DEFINITIONS[type];
         if (def) {
             totalValue += def.price * count;
@@ -90,7 +94,7 @@ const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, 
                             <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 flex justify-between items-center shadow-lg">
                                 <div>
                                     <h3 className="text-xl font-bold text-white">Bulk Sell</h3>
-                                    <p className="text-slate-400 text-sm">Convert all collected ores into cash instantly.</p>
+                                    <p className="text-slate-400 text-sm">Convert unlocked ores into cash.</p>
                                     {(resourceState.moneyMultiplier || 1) > 1 && (
                                         <div className="text-xs text-yellow-500 mt-1 font-bold">
                                             {((resourceState.moneyMultiplier - 1) * 100).toFixed(0)}% Bonus Applied!
@@ -104,7 +108,7 @@ const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, 
                                         disabled={totalValue === 0}
                                         className="bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-transform active:scale-95"
                                     >
-                                        SELL ALL
+                                        SELL UNLOCKED
                                     </button>
                                 </div>
                             </div>
@@ -114,8 +118,11 @@ const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, 
                                     const type = parseInt(typeStr) as BlockType;
                                     const def = BLOCK_DEFINITIONS[type];
                                     if (!def || count === 0 || def.price === 0) return null;
+                                    
+                                    const isLocked = locked.includes(type);
+
                                     return (
-                                        <div key={type} className="bg-slate-800/50 p-4 rounded-lg border border-slate-700 flex justify-between items-center">
+                                        <div key={type} className={`bg-slate-800/50 p-4 rounded-lg border flex justify-between items-center transition relative group ${isLocked ? 'border-red-500/30 opacity-75' : 'border-slate-700'}`}>
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded bg-slate-700" style={{backgroundColor: def.color}} />
                                                 <div>
@@ -123,7 +130,18 @@ const Shop: React.FC<ShopProps> = ({ isOpen, onClose, resourceState, onSellAll, 
                                                     <div className="text-xs text-slate-500">x{count}</div>
                                                 </div>
                                             </div>
-                                            <div className="font-mono text-green-400 font-bold">${(def.price * count * (resourceState.moneyMultiplier || 1)).toLocaleString()}</div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                 <div className={`font-mono font-bold ${isLocked ? 'text-slate-500' : 'text-green-400'}`}>
+                                                     ${(def.price * count * (resourceState.moneyMultiplier || 1)).toLocaleString()}
+                                                 </div>
+                                                 <button 
+                                                    onClick={() => onToggleLock(type)}
+                                                    className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition"
+                                                    title={isLocked ? "Unlock to sell" : "Lock to keep"}
+                                                 >
+                                                     {isLocked ? <Lock className="w-4 h-4 text-red-400" /> : <Unlock className="w-4 h-4" />}
+                                                 </button>
+                                            </div>
                                         </div>
                                     );
                                 })}

@@ -5,11 +5,11 @@ import Overlay from './components/Overlay';
 import Settings from './components/Settings';
 import Leaderboard from './components/Leaderboard';
 import Shop from './components/Shop';
-import { GameConfig, ChatMessage, ResourceState, GameEvent, BlockType } from './types';
+import { GameConfig, ChatMessage, ResourceState, GameEvent, BlockType, Achievement } from './types';
 import { connectTwitch } from './services/twitchService';
 import { connectYouTube, getSubscriberCount } from './services/youtubeService';
 import { analyzeChatBatch, generateOfflineMessage } from './services/gameMasterService';
-import { BLOCK_DEFINITIONS } from './constants';
+import { BLOCK_DEFINITIONS, ACHIEVEMENTS } from './constants';
 
 const DEFAULT_CONFIG: GameConfig = {
   platform: 'OFFLINE',
@@ -73,18 +73,21 @@ export default function App() {
     currentZone: 'OVERWORLD',
     luckMultiplier: 1.0,
     moneyMultiplier: 1.0,
+    fortuneMultiplier: 1.0,
     ownedAbilities: [],
-    abilityCooldowns: {}
+    abilityCooldowns: {},
+    lockedItems: [],
+    unlockedAchievements: []
   });
   
   const [gameEvent, setGameEvent] = useState<GameEvent | null>(null);
   const [gameComment, setGameComment] = useState<string | null>(null);
+  const [recentAchievement, setRecentAchievement] = useState<Achievement | null>(null);
 
   // Chaos Engine Refs
   const chaosTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
   
   // COMMAND QUEUE SYSTEM
-  // Structure: { 'SPAWN_TNT': [Event, Event], 'SPAWN_BALLS': [Event] }
   const commandQueuesRef = useRef<Record<string, GameEvent[]>>({});
 
   // Helper to schedule variable intervals
@@ -107,6 +110,60 @@ export default function App() {
           return () => clearTimeout(timer);
       }
   }, [gameComment]);
+
+  // Clear achievement toast
+  useEffect(() => {
+      if (recentAchievement) {
+          const timer = setTimeout(() => setRecentAchievement(null), 5000);
+          return () => clearTimeout(timer);
+      }
+  }, [recentAchievement]);
+
+  // Check Achievements on Resource Update
+  useEffect(() => {
+      const newUnlocks: string[] = [];
+      let updated = false;
+
+      ACHIEVEMENTS.forEach(ach => {
+          if (!resources.unlockedAchievements.includes(ach.id)) {
+              if (ach.condition(resources)) {
+                  newUnlocks.push(ach.id);
+                  setRecentAchievement(ach);
+                  updated = true;
+              }
+          }
+      });
+
+      if (updated) {
+          setResources(prev => ({
+              ...prev,
+              unlockedAchievements: [...prev.unlockedAchievements, ...newUnlocks]
+          }));
+      }
+  }, [resources.depth, resources.money, resources.pickaxeTier]);
+
+  // Random World Event Generator
+  useEffect(() => {
+     const eventInterval = setInterval(() => {
+         // 20% chance every minute to trigger a random world event if nothing else is happening
+         if (!gameEvent && Math.random() < 0.2) {
+             const events = ['GRAVITY_LOW', 'TNT_STORM', 'GOLD_RUSH', 'SPEED_BOOST'];
+             const randomEvent = events[Math.floor(Math.random() * events.length)];
+             
+             setGameEvent({ 
+                 action: 'TRIGGER_CHALLENGE', 
+                 data: randomEvent,
+                 reason: 'WORLD_EVENT'
+             });
+             setGameComment(`⚠️ WORLD EVENT: ${randomEvent.replace('_', ' ')}!`);
+             
+             // Clear event trigger after brief moment so Game can process it
+             setTimeout(() => setGameEvent(null), 1000);
+         }
+     }, 60000); // Check every minute
+
+     return () => clearInterval(eventInterval);
+  }, [gameEvent]);
 
   // Connection Handler
   useEffect(() => {
@@ -211,7 +268,6 @@ export default function App() {
              }
              // Add event to specific queue
              commandQueuesRef.current[event.action].push(event);
-             console.log(`Queued: ${event.action}. Queue Size: ${commandQueuesRef.current[event.action].length}`);
         }
       }
     }, 3000); // Check chat every 3s (batched)
@@ -258,9 +314,13 @@ export default function App() {
       setResources(prev => {
           let total = 0;
           const newInventory = { ...prev.inventory };
+          const locked = prev.lockedItems || [];
           
           Object.entries(newInventory).forEach(([key, count]) => {
               const type = parseInt(key) as BlockType;
+              // Skip if locked
+              if (locked.includes(type)) return;
+
               const def = BLOCK_DEFINITIONS[type];
               if (def && def.price > 0) {
                   total += def.price * count;
@@ -278,6 +338,16 @@ export default function App() {
               };
           }
           return prev;
+      });
+  }, []);
+
+  const handleToggleLock = useCallback((type: number) => {
+      setResources(prev => {
+          const isLocked = prev.lockedItems.includes(type);
+          const newLocks = isLocked 
+              ? prev.lockedItems.filter(t => t !== type)
+              : [...prev.lockedItems, type];
+          return { ...prev, lockedItems: newLocks };
       });
   }, []);
 
@@ -308,6 +378,12 @@ export default function App() {
                       ...prev,
                       money: prev.money - cost,
                       moneyMultiplier: (prev.moneyMultiplier || 1) + 0.2
+                  };
+              } else if (abilityId === 'fortune') {
+                  return {
+                      ...prev,
+                      money: prev.money - cost,
+                      fortuneMultiplier: (prev.fortuneMultiplier || 1) + 0.5
                   };
               } else {
                    return {
@@ -352,6 +428,8 @@ export default function App() {
         gameComment={gameComment}
         gameEvent={gameEvent}
         onOpenShop={() => setIsShopOpen(true)}
+        config={config}
+        recentAchievement={recentAchievement}
       />
 
       <Settings 
@@ -374,6 +452,7 @@ export default function App() {
           onSellAll={handleSellAll}
           onBuyUpgrade={handleBuyUpgrade}
           onBuyAbility={handleBuyAbility}
+          onToggleLock={handleToggleLock}
       />
 
       {!isSettingsOpen && !isLeaderboardOpen && !isShopOpen && config.platform === 'OFFLINE' && (

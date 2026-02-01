@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
-import { ResourceState, ChatMessage, GameEvent, BlockType } from '../types';
-import { Pickaxe, Gem, ArrowDown, Cpu, MessageSquare, Hammer, ShoppingCart, DollarSign, Bomb, Magnet, Disc, Snowflake, Radiation, TrendingUp, Wrench, Zap } from 'lucide-react';
+import { ResourceState, ChatMessage, GameEvent, BlockType, GameConfig, Achievement } from '../types';
+import { Pickaxe, Gem, ArrowDown, Cpu, MessageSquare, Hammer, ShoppingCart, DollarSign, Bomb, Magnet, Disc, Snowflake, Radiation, TrendingUp, Wrench, Zap, Trophy, Crown, Flame } from 'lucide-react';
 import { PICKAXE_TIERS, BLOCK_DEFINITIONS, ABILITIES } from '../constants';
 
 interface OverlayProps {
@@ -10,9 +10,11 @@ interface OverlayProps {
   gameComment: string | null;
   gameEvent: GameEvent | null;
   onOpenShop: () => void;
+  config: GameConfig;
+  recentAchievement: Achievement | null;
 }
 
-const Overlay: React.FC<OverlayProps> = ({ resources, chatMessages, gameComment, gameEvent, onOpenShop }) => {
+const Overlay: React.FC<OverlayProps> = ({ resources, chatMessages, gameComment, gameEvent, onOpenShop, config, recentAchievement }) => {
   const currentTier = PICKAXE_TIERS.find(t => t.id === resources.pickaxeTier) || PICKAXE_TIERS[0];
   
   // Rotation state for the inventory carousel
@@ -59,6 +61,21 @@ const Overlay: React.FC<OverlayProps> = ({ resources, chatMessages, gameComment,
           case 'Wrench': return <Wrench className="w-6 h-6" />;
           case 'DollarSign': return <DollarSign className="w-6 h-6" />;
           default: return <Zap className="w-6 h-6" />;
+      }
+  };
+
+  const getAchIcon = (iconName: string) => {
+      switch(iconName) {
+          case 'ArrowDown': return <ArrowDown className="w-8 h-8 text-cyan-400" />;
+          case 'Skull': return <Radiation className="w-8 h-8 text-red-500" />;
+          case 'Radiation': return <Radiation className="w-8 h-8 text-green-500" />;
+          case 'DollarSign': return <DollarSign className="w-8 h-8 text-yellow-400" />;
+          case 'Gem': return <Gem className="w-8 h-8 text-purple-400" />;
+          case 'Crown': return <Crown className="w-8 h-8 text-yellow-600" />;
+          case 'Pickaxe': return <Hammer className="w-8 h-8 text-blue-400" />;
+          case 'Zap': return <Zap className="w-8 h-8 text-purple-600" />;
+          case 'Flame': return <Flame className="w-8 h-8 text-orange-500" />;
+          default: return <Trophy className="w-8 h-8 text-yellow-400" />;
       }
   };
 
@@ -115,9 +132,25 @@ const Overlay: React.FC<OverlayProps> = ({ resources, chatMessages, gameComment,
                {/* Toast Message */}
                {(gameComment || gameEvent) && (
                    <div className="mt-4 animate-in fade-in slide-in-from-top-5 duration-500">
-                       <div className="bg-slate-900/80 backdrop-blur border border-purple-500/30 px-6 py-3 rounded-lg shadow-[0_0_20px_rgba(168,85,247,0.3)] flex items-center gap-3">
-                           <Cpu className="w-5 h-5 text-purple-400" />
+                       <div className={`bg-slate-900/80 backdrop-blur border px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 ${gameEvent?.reason === 'WORLD_EVENT' ? 'border-yellow-500/50 bg-yellow-900/30' : 'border-purple-500/30'}`}>
+                           <Cpu className={`w-5 h-5 ${gameEvent?.reason === 'WORLD_EVENT' ? 'text-yellow-400' : 'text-purple-400'}`} />
                            <span className="text-sm font-medium text-slate-200">{gameEvent?.action === 'COMMENTARY' ? gameEvent.data : gameComment}</span>
+                       </div>
+                   </div>
+               )}
+
+               {/* Achievement Toast */}
+               {recentAchievement && (
+                   <div className="mt-4 animate-in zoom-in-50 slide-in-from-bottom-10 duration-500">
+                       <div className="bg-gradient-to-r from-yellow-900/80 to-slate-900/80 backdrop-blur border border-yellow-500/50 px-6 py-4 rounded-xl shadow-[0_0_30px_rgba(234,179,8,0.3)] flex items-center gap-4">
+                           <div className="p-2 bg-yellow-500/20 rounded-full animate-bounce">
+                               {getAchIcon(recentAchievement.icon)}
+                           </div>
+                           <div>
+                               <div className="text-xs font-bold text-yellow-400 uppercase tracking-widest mb-1">Achievement Unlocked</div>
+                               <div className="text-lg font-black text-white">{recentAchievement.name}</div>
+                               <div className="text-xs text-slate-400">{recentAchievement.description}</div>
+                           </div>
                        </div>
                    </div>
                )}
@@ -193,33 +226,34 @@ const Overlay: React.FC<OverlayProps> = ({ resources, chatMessages, gameComment,
               </div>
           </div>
 
-          {/* Bottom Right: Chat Integration */}
-          <div className="flex flex-col items-end gap-2 w-80 pointer-events-auto">
-              {/* Chat Container */}
-              <div className="w-full h-[300px] flex flex-col justify-end overflow-hidden mask-image-linear-to-t">
-                  <div className="space-y-2 flex flex-col-reverse overflow-y-auto scrollbar-hide pr-2">
-                       {chatMessages.length === 0 && (
-                           <div className="text-right text-slate-600 italic text-sm p-4">Waiting for connection...</div>
-                       )}
-                       {[...chatMessages].reverse().map((msg, idx) => (
-                           <div key={idx} className="text-sm animate-in slide-in-from-right-10 duration-300 flex justify-end">
-                                <div className="bg-black/40 backdrop-blur-sm border border-white/5 px-3 py-1.5 rounded-l-xl rounded-tr-xl max-w-[90%]">
-                                    <span className="font-bold text-xs block mb-0.5" style={{ color: msg.color || '#a855f7' }}>
-                                        {msg.user}
-                                        {msg.isDonation && <span className="ml-2 text-[10px] bg-yellow-500/20 text-yellow-400 px-1 rounded">DONOR</span>}
-                                    </span>
-                                    <span className="text-slate-200 break-words leading-tight">{msg.message}</span>
-                                </div>
-                           </div>
-                       ))}
+          {/* Bottom Right: Chat Integration (HIDDEN IF OFFLINE) */}
+          {config.platform !== 'OFFLINE' && (
+              <div className="flex flex-col items-end gap-2 w-80 pointer-events-auto animate-in slide-in-from-right-10 fade-in duration-500">
+                  {/* Chat Container */}
+                  <div className="w-full h-[300px] flex flex-col justify-end overflow-hidden mask-image-linear-to-t">
+                      <div className="space-y-2 flex flex-col-reverse overflow-y-auto scrollbar-hide pr-2">
+                           {chatMessages.length === 0 && (
+                               <div className="text-right text-slate-600 italic text-sm p-4">Waiting for connection...</div>
+                           )}
+                           {[...chatMessages].reverse().map((msg, idx) => (
+                               <div key={idx} className="text-sm animate-in slide-in-from-right-10 duration-300 flex justify-end">
+                                    <div className="bg-black/40 backdrop-blur-sm border border-white/5 px-3 py-1.5 rounded-l-xl rounded-tr-xl max-w-[90%]">
+                                        <span className="font-bold text-xs block mb-0.5" style={{ color: msg.color || '#a855f7' }}>
+                                            {msg.user}
+                                            {msg.isDonation && <span className="ml-2 text-[10px] bg-yellow-500/20 text-yellow-400 px-1 rounded">DONOR</span>}
+                                        </span>
+                                        <span className="text-slate-200 break-words leading-tight">{msg.message}</span>
+                                    </div>
+                               </div>
+                           ))}
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-black/60 backdrop-blur rounded-full border border-white/10 text-[10px] text-slate-400 uppercase tracking-widest">
+                      <MessageSquare className="w-3 h-3" />
+                      Live Chat Feed
                   </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-black/60 backdrop-blur rounded-full border border-white/10 text-[10px] text-slate-400 uppercase tracking-widest">
-                  <MessageSquare className="w-3 h-3" />
-                  Live Chat Feed
-              </div>
-          </div>
-
+          )}
       </div>
       
     </div>

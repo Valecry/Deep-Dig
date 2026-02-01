@@ -1,5 +1,5 @@
 
-import { BlockType, PickaxeStats, ZoneConfig, AbilityDef } from './types';
+import { BlockType, PickaxeStats, ZoneConfig, AbilityDef, Achievement } from './types';
 
 export const BLOCK_SIZE = 40;
 export const GRAVITY = 0.5;
@@ -12,6 +12,20 @@ interface BlockDef {
   price: number; // Sell price
   name: string;
 }
+
+export const ACHIEVEMENTS: Achievement[] = [
+    { id: 'depth_500', name: 'Going Deeper', description: 'Reach 500m depth', icon: 'ArrowDown', condition: (s) => s.depth >= 500 },
+    { id: 'depth_2000', name: 'Into The Abyss', description: 'Reach 2,000m depth', icon: 'Skull', condition: (s) => s.depth >= 2000 },
+    { id: 'depth_10000', name: 'The End?', description: 'Reach 10,000m depth', icon: 'Radiation', condition: (s) => s.depth >= 10000 },
+    
+    { id: 'rich_1000', name: 'Pocket Change', description: 'Have $1,000', icon: 'DollarSign', condition: (s) => s.money >= 1000 },
+    { id: 'rich_1m', name: 'Millionaire', description: 'Have $1,000,000', icon: 'Gem', condition: (s) => s.money >= 1000000 },
+    { id: 'rich_1b', name: 'Billionaire', description: 'Have $1,000,000,000', icon: 'Crown', condition: (s) => s.money >= 1000000000 },
+
+    { id: 'tier_diamond', name: 'Shiny!', description: 'Equip Diamond Pickaxe', icon: 'Pickaxe', condition: (s) => s.pickaxeTier === 'diamond' },
+    { id: 'tier_void', name: 'Void Walker', description: 'Equip Void Pickaxe', icon: 'Zap', condition: (s) => s.pickaxeTier === 'void' },
+    { id: 'tier_finality', name: 'The Destroyer', description: 'Equip The Finality', icon: 'Flame', condition: (s) => s.pickaxeTier === 'finality' },
+];
 
 // Comprehensive Block Definitions
 export const BLOCK_DEFINITIONS: Record<BlockType, BlockDef> = {
@@ -38,7 +52,14 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDef> = {
   [BlockType.TUNGSTEN]: { name: 'Tungsten', color: '#64748b', hp: 350, value: 300, price: 400 },
   [BlockType.NETHERITE]: { name: 'Netherite', color: '#3f3f46', hp: 300, value: 250, price: 1000 },
 
-  // --- UNDERWORLD ---
+  // --- CRYSTAL DEPTHS ---
+  [BlockType.CRYSTAL_STONE]: { name: 'Crystal Stone', color: '#c4b5fd', hp: 80, value: 20, price: 20 },
+  [BlockType.AMETHYST_CLUSTER]: { name: 'Amethyst', color: '#a855f7', hp: 120, value: 50, price: 60 },
+  [BlockType.SAPPHIRE_ORE]: { name: 'Sapphire', color: '#2563eb', hp: 150, value: 70, price: 90 },
+  [BlockType.RUBY_ORE]: { name: 'Ruby', color: '#dc2626', hp: 180, value: 100, price: 120 },
+  [BlockType.PRISMARINE]: { name: 'Prismarine', color: '#2dd4bf', hp: 100, value: 40, price: 50 },
+
+  // --- UNDERWORLD & MAGMA & ASH ---
   [BlockType.ASHSTONE]: { name: 'Ashstone', color: '#292524', hp: 100, value: 10, price: 15 },
   [BlockType.BRIMSTONE]: { name: 'Brimstone', color: '#451a03', hp: 120, value: 15, price: 20 },
   [BlockType.SULFUR_ORE]: { name: 'Sulfur', color: '#fde047', hp: 130, value: 40, price: 50 },
@@ -54,8 +75,26 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDef> = {
   [BlockType.BLACK_NETHERITE]: { name: 'Black Netherite', color: '#09090b', hp: 800, value: 800, price: 3000 },
   [BlockType.ABYSSAL_ALLOY]: { name: 'Abyssal Alloy', color: '#1e1b4b', hp: 900, value: 900, price: 3500 },
   [BlockType.UNDERSTEEL]: { name: 'Understeel', color: '#374151', hp: 550, value: 450, price: 1200 },
+  [BlockType.IGNIS_ORE]: { name: 'Ignis Ore', color: '#f97316', hp: 220, value: 100, price: 200 },
+  [BlockType.MAGMA_ROCK]: { name: 'Magma Rock', color: '#7c2d12', hp: 180, value: 20, price: 30 },
+  [BlockType.CINDER_COAL]: { name: 'Cinder Coal', color: '#171717', hp: 140, value: 50, price: 60 },
+  [BlockType.PHOENIX_DUST]: { name: 'Phoenix Dust', color: '#fdba74', hp: 200, value: 300, price: 400 },
 
-  // --- VOID ---
+  // --- BONE & CATACOMBS ---
+  [BlockType.FOSSIL_BLOCK]: { name: 'Fossil', color: '#d6d3d1', hp: 150, value: 80, price: 100 },
+  [BlockType.ANCIENT_BONE]: { name: 'Ancient Bone', color: '#f5f5f4', hp: 200, value: 150, price: 200 },
+  [BlockType.HEMOLITH]: { name: 'Hemolith', color: '#7f1d1d', hp: 300, value: 250, price: 400 },
+  [BlockType.CRIMSON_QUARTZ]: { name: 'Crimson Quartz', color: '#fecaca', hp: 250, value: 200, price: 300 },
+  [BlockType.ONYX_ORE]: { name: 'Onyx', color: '#000000', hp: 700, value: 600, price: 1200 },
+  [BlockType.DARK_GRANITE]: { name: 'Dark Granite', color: '#1c1917', hp: 600, value: 100, price: 150 },
+
+  // --- INDUSTRIAL ---
+  [BlockType.FLUX_STONE]: { name: 'Flux Stone', color: '#fb923c', hp: 250, value: 80, price: 120 },
+  [BlockType.MOLTEN_IRON]: { name: 'Molten Iron', color: '#ea580c', hp: 350, value: 200, price: 300 },
+  [BlockType.ACID_ROCK]: { name: 'Acid Rock', color: '#bef264', hp: 280, value: 100, price: 150 },
+  [BlockType.TOXIC_WASTE]: { name: 'Toxic Waste', color: '#84cc16', hp: 300, value: 300, price: 400 },
+
+  // --- VOID & FRACTURED ---
   [BlockType.VOID_SHARD]: { name: 'Void Shard', color: '#000000', hp: 500, value: 500, price: 200 }, 
   [BlockType.FRACTURED_OBSIDIAN]: { name: 'Fractured Obsidian', color: '#171717', hp: 1000, value: 200, price: 400 },
   [BlockType.NULLSTONE]: { name: 'Nullstone', color: '#262626', hp: 800, value: 100, price: 500 },
@@ -74,85 +113,175 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDef> = {
   [BlockType.VOID_STEEL]: { name: 'Void Steel', color: '#334155', hp: 2000, value: 1500, price: 5500 },
   [BlockType.PRIMORDIAL_VOID]: { name: 'Primordial Void', color: '#0f172a', hp: 5000, value: 5000, price: 18000 },
   [BlockType.ORIGIN_MATTER]: { name: 'Origin Matter', color: '#facc15', hp: 9000, value: 9000, price: 30000 },
+
+  // --- ADVANCED ZONES ---
+  [BlockType.GLITCH_STONE]: { name: 'Glitch Stone', color: '#22d3ee', hp: 1200, value: 400, price: 600 },
+  [BlockType.ANTI_GRAVITE]: { name: 'Anti-Gravite', color: '#818cf8', hp: 2000, value: 2000, price: 4000 },
+  [BlockType.SHADOW_STONE]: { name: 'Shadow Stone', color: '#0f172a', hp: 2500, value: 1000, price: 2000 },
+  [BlockType.UMBRA_ORE]: { name: 'Umbra Ore', color: '#1e293b', hp: 3000, value: 2500, price: 5000 },
+  [BlockType.GAP_STONE]: { name: 'Gap Stone', color: '#475569', hp: 4000, value: 1500, price: 3000 },
+  [BlockType.DEADSTONE]: { name: 'Deadstone', color: '#525252', hp: 5000, value: 2000, price: 4000 },
+  [BlockType.NECROTIC_ORE]: { name: 'Necrotic Ore', color: '#404040', hp: 6000, value: 5000, price: 10000 },
+  [BlockType.ABYSSAL_CORE]: { name: 'Abyssal Core', color: '#020617', hp: 8000, value: 8000, price: 15000 },
+  [BlockType.TOMBSTONE_FRAGMENT]: { name: 'Tombstone', color: '#78716c', hp: 10000, value: 10000, price: 20000 },
+  [BlockType.OMEGA_STONE]: { name: 'Omega Stone', color: '#e2e8f0', hp: 15000, value: 20000, price: 40000 },
+  [BlockType.DIVINE_SCAR]: { name: 'Divine Scar', color: '#fbbf24', hp: 25000, value: 50000, price: 100000 },
+  [BlockType.GODSCAR_ORE]: { name: 'Godscar Ore', color: '#fde047', hp: 30000, value: 75000, price: 150000 },
+  [BlockType.CORE_ESSENCE]: { name: 'Core Essence', color: '#ef4444', hp: 50000, value: 100000, price: 250000 },
+  [BlockType.BLEEDING_REALITY]: { name: 'Bleeding Reality', color: '#991b1b', hp: 75000, value: 200000, price: 500000 },
+  [BlockType.NOTHINGNESS]: { name: 'Nothingness', color: '#000000', hp: 100000, value: 500000, price: 1000000 },
 };
 
 export const BLOCK_COLORS = Object.fromEntries(Object.entries(BLOCK_DEFINITIONS).map(([k, v]) => [k, v.color])) as Record<BlockType, string>;
 export const BLOCK_HP = Object.fromEntries(Object.entries(BLOCK_DEFINITIONS).map(([k, v]) => [k, v.hp])) as Record<BlockType, number>;
 export const ORE_CHANCE = {}; 
 
+// Updated Zones with 500m increments
 export const ZONES: ZoneConfig[] = [
   {
-    id: 'OVERWORLD',
-    name: 'OVERWORLD ZONE',
-    startDepth: 0,
-    color: '#0ea5e9',
-    baseBlock: BlockType.STONE,
+    id: 'OVERWORLD', name: 'OVERWORLD', startDepth: 0, color: '#0ea5e9', baseBlock: BlockType.STONE,
     blocks: [
-      { type: BlockType.COAL, chance: 0.04 },
-      { type: BlockType.COPPER, chance: 0.035 },
-      { type: BlockType.IRON, chance: 0.03 },
-      { type: BlockType.QUARTZ, chance: 0.02 },
-      { type: BlockType.GOLD, chance: 0.015 },
-      { type: BlockType.REDSTONE, chance: 0.015 },
-      { type: BlockType.LAPIS, chance: 0.01 },
-      { type: BlockType.PALLADIUM, chance: 0.008 },
-      { type: BlockType.DIAMOND, chance: 0.005 },
-      { type: BlockType.COBALT, chance: 0.005 },
-      { type: BlockType.TITANIUM, chance: 0.004 },
-      { type: BlockType.MITHRIL, chance: 0.003 },
-      { type: BlockType.ORICHALCUM, chance: 0.003 },
-      { type: BlockType.ADAMANTITE, chance: 0.002 },
-      { type: BlockType.TUNGSTEN, chance: 0.001 },
-      { type: BlockType.NETHERITE, chance: 0.0005 },
+      { type: BlockType.COAL, chance: 0.04 }, { type: BlockType.COPPER, chance: 0.035 }, { type: BlockType.IRON, chance: 0.03 },
+      { type: BlockType.GOLD, chance: 0.015 }, { type: BlockType.DIAMOND, chance: 0.005 }
     ]
   },
   {
-    id: 'UNDERWORLD',
-    name: 'UNDERWORLD ZONE',
-    startDepth: 1000,
-    color: '#ef4444',
-    baseBlock: BlockType.ASHSTONE,
+    id: 'CRYSTAL_DEPTHS', name: 'CRYSTAL DEPTHS', startDepth: 500, color: '#a855f7', baseBlock: BlockType.CRYSTAL_STONE,
     blocks: [
-      { type: BlockType.BRIMSTONE, chance: 0.06 },
-      { type: BlockType.SULFUR_ORE, chance: 0.05 },
-      { type: BlockType.SCORIA_IRON, chance: 0.04 },
-      { type: BlockType.PYROCLAST, chance: 0.03 },
-      { type: BlockType.MAGMA_GOLD, chance: 0.025 },
-      { type: BlockType.BLOODSTONE, chance: 0.02 },
-      { type: BlockType.HELLFORGED_IRON, chance: 0.015 },
-      { type: BlockType.UNDERSTEEL, chance: 0.01 },
-      { type: BlockType.SOUL_ORE, chance: 0.008 },
-      { type: BlockType.OBSIDIAN_ORE, chance: 0.005 },
-      { type: BlockType.INFERNIUM, chance: 0.003 },
-      { type: BlockType.DEMONITE, chance: 0.002 },
-      { type: BlockType.ABYSSAL_ALLOY, chance: 0.001 },
-      { type: BlockType.BLACK_NETHERITE, chance: 0.0005 },
+      { type: BlockType.AMETHYST_CLUSTER, chance: 0.05 }, { type: BlockType.SAPPHIRE_ORE, chance: 0.04 }, { type: BlockType.RUBY_ORE, chance: 0.03 },
+      { type: BlockType.PRISMARINE, chance: 0.05 }, { type: BlockType.DIAMOND, chance: 0.01 }
     ]
   },
   {
-    id: 'VOID',
-    name: 'VOID ZONE',
-    startDepth: 2000,
-    color: '#a855f7',
-    baseBlock: BlockType.VOID_SHARD,
+    id: 'UNDERWORLD', name: 'UNDERWORLD', startDepth: 1000, color: '#ef4444', baseBlock: BlockType.ASHSTONE,
     blocks: [
-      { type: BlockType.FRACTURED_OBSIDIAN, chance: 0.06 },
-      { type: BlockType.NULLSTONE, chance: 0.05 },
-      { type: BlockType.ECHO_CRYSTAL, chance: 0.04 },
-      { type: BlockType.VOID_STEEL, chance: 0.03 },
-      { type: BlockType.RIFT_ORE, chance: 0.025 },
-      { type: BlockType.PHASE_ALLOY, chance: 0.02 },
-      { type: BlockType.PARADOX_ORE, chance: 0.015 },
-      { type: BlockType.COLLAPSE_CRYSTAL, chance: 0.01 },
-      { type: BlockType.SINGULARITY_FRAGMENT, chance: 0.008 },
-      { type: BlockType.ENTROPY_ALLOY, chance: 0.005 },
-      { type: BlockType.REALITY_FRAGMENT, chance: 0.004 },
-      { type: BlockType.DARK_MATTER, chance: 0.003 },
-      { type: BlockType.PRIMORDIAL_VOID, chance: 0.002 },
-      { type: BlockType.ABSOLUTE_VOID_CRYSTAL, chance: 0.001 },
-      { type: BlockType.ANTIMATTER, chance: 0.0005 },
-      { type: BlockType.ORIGIN_MATTER, chance: 0.0001 },
-      { type: BlockType.EVENT_HORIZON_CORE, chance: 0.00001 },
+      { type: BlockType.BRIMSTONE, chance: 0.06 }, { type: BlockType.HELLFORGED_IRON, chance: 0.03 }, { type: BlockType.MAGMA_GOLD, chance: 0.02 }
+    ]
+  },
+  {
+    id: 'MAGMA_VEINS', name: 'MAGMA VEINS', startDepth: 1500, color: '#f97316', baseBlock: BlockType.MAGMA_ROCK,
+    blocks: [
+      { type: BlockType.IGNIS_ORE, chance: 0.05 }, { type: BlockType.SCORIA_IRON, chance: 0.04 }, { type: BlockType.PYROCLAST, chance: 0.03 }
+    ]
+  },
+  {
+    id: 'ASH_CHASMS', name: 'ASH CHASMS', startDepth: 2000, color: '#57534e', baseBlock: BlockType.ASHSTONE,
+    blocks: [
+      { type: BlockType.CINDER_COAL, chance: 0.08 }, { type: BlockType.PHOENIX_DUST, chance: 0.02 }, { type: BlockType.OBSIDIAN_ORE, chance: 0.01 }
+    ]
+  },
+  {
+    id: 'BONE_WARRENS', name: 'BONE WARRENS', startDepth: 2500, color: '#e7e5e4', baseBlock: BlockType.FOSSIL_BLOCK,
+    blocks: [
+      { type: BlockType.ANCIENT_BONE, chance: 0.1 }, { type: BlockType.COAL, chance: 0.05 }
+    ]
+  },
+  {
+    id: 'BLOODSTONE_CAVES', name: 'BLOODSTONE CAVES', startDepth: 3000, color: '#991b1b', baseBlock: BlockType.BLOODSTONE,
+    blocks: [
+      { type: BlockType.HEMOLITH, chance: 0.05 }, { type: BlockType.CRIMSON_QUARTZ, chance: 0.06 }
+    ]
+  },
+  {
+    id: 'OBSIDIAN_CATACOMBS', name: 'OBSIDIAN CATACOMBS', startDepth: 3500, color: '#09090b', baseBlock: BlockType.OBSIDIAN_ORE,
+    blocks: [
+      { type: BlockType.ONYX_ORE, chance: 0.04 }, { type: BlockType.DARK_GRANITE, chance: 0.1 }
+    ]
+  },
+  {
+    id: 'SMELTER_DEPTHS', name: 'SMELTER DEPTHS', startDepth: 4000, color: '#ea580c', baseBlock: BlockType.FLUX_STONE,
+    blocks: [
+      { type: BlockType.MOLTEN_IRON, chance: 0.06 }, { type: BlockType.SCORIA_IRON, chance: 0.04 }
+    ]
+  },
+  {
+    id: 'SULFUR_PITS', name: 'SULFUR PITS', startDepth: 4500, color: '#facc15', baseBlock: BlockType.ACID_ROCK,
+    blocks: [
+      { type: BlockType.SULFUR_ORE, chance: 0.1 }, { type: BlockType.TOXIC_WASTE, chance: 0.03 }
+    ]
+  },
+  {
+    id: 'FRACTURED_CAVERNS', name: 'FRACTURED CAVERNS', startDepth: 5000, color: '#22d3ee', baseBlock: BlockType.FRACTURED_OBSIDIAN,
+    blocks: [
+      { type: BlockType.GLITCH_STONE, chance: 0.05 }, { type: BlockType.RIFT_ORE, chance: 0.03 }
+    ]
+  },
+  {
+    id: 'VOID', name: 'VOID', startDepth: 5500, color: '#7e22ce', baseBlock: BlockType.VOID_SHARD,
+    blocks: [
+      { type: BlockType.VOID_STEEL, chance: 0.05 }, { type: BlockType.NULLSTONE, chance: 0.04 }
+    ]
+  },
+  {
+    id: 'NULL_HOLLOWS', name: 'NULL HOLLOWS', startDepth: 6000, color: '#404040', baseBlock: BlockType.NULLSTONE,
+    blocks: [
+      { type: BlockType.DARK_MATTER, chance: 0.02 }, { type: BlockType.ANTIMATTER, chance: 0.01 }
+    ]
+  },
+  {
+    id: 'INVERTED_SHAFTS', name: 'INVERTED SHAFTS', startDepth: 6500, color: '#4f46e5', baseBlock: BlockType.ANTI_GRAVITE,
+    blocks: [
+      { type: BlockType.PHASE_ALLOY, chance: 0.05 }, { type: BlockType.RIFT_ORE, chance: 0.03 }
+    ]
+  },
+  {
+    id: 'SHADOW_TUNNELS', name: 'SHADOW TUNNELS', startDepth: 7000, color: '#020617', baseBlock: BlockType.SHADOW_STONE,
+    blocks: [
+      { type: BlockType.UMBRA_ORE, chance: 0.04 }, { type: BlockType.ONYX_ORE, chance: 0.05 }
+    ]
+  },
+  {
+    id: 'ECHO_REMAINS', name: 'ECHO REMAINS', startDepth: 7500, color: '#0d9488', baseBlock: BlockType.ECHO_CRYSTAL,
+    blocks: [
+      { type: BlockType.REALITY_FRAGMENT, chance: 0.03 }, { type: BlockType.PHASE_ALLOY, chance: 0.04 }
+    ]
+  },
+  {
+    id: 'GAP_CAVES', name: 'GAP CAVES', startDepth: 8000, color: '#334155', baseBlock: BlockType.GAP_STONE,
+    blocks: [
+      { type: BlockType.VOID_STEEL, chance: 0.06 }, { type: BlockType.NOTHINGNESS, chance: 0.001 }
+    ]
+  },
+  {
+    id: 'DEADSTONE_CHAMBERS', name: 'DEADSTONE CHAMBERS', startDepth: 8500, color: '#525252', baseBlock: BlockType.DEADSTONE,
+    blocks: [
+      { type: BlockType.NECROTIC_ORE, chance: 0.05 }, { type: BlockType.FOSSIL_BLOCK, chance: 0.1 }
+    ]
+  },
+  {
+    id: 'BLACK_BEDROCK', name: 'BLACK BEDROCK', startDepth: 9000, color: '#000000', baseBlock: BlockType.BEDROCK, // Visually distinct in rendering
+    blocks: [
+      { type: BlockType.ABYSSAL_CORE, chance: 0.02 }, { type: BlockType.BLACK_NETHERITE, chance: 0.05 }
+    ]
+  },
+  {
+    id: 'GRAVE_OF_WORLD', name: 'GRAVE OF WORLD', startDepth: 9500, color: '#78716c', baseBlock: BlockType.TOMBSTONE_FRAGMENT,
+    blocks: [
+      { type: BlockType.ANCIENT_BONE, chance: 0.2 }, { type: BlockType.SOUL_ORE, chance: 0.05 }
+    ]
+  },
+  {
+    id: 'THE_LAST_SHAFT', name: 'THE LAST SHAFT', startDepth: 10000, color: '#e2e8f0', baseBlock: BlockType.OMEGA_STONE,
+    blocks: [
+      { type: BlockType.PRIMORDIAL_VOID, chance: 0.03 }, { type: BlockType.ORIGIN_MATTER, chance: 0.01 }
+    ]
+  },
+  {
+    id: 'GODSCAR_DEPTHS', name: 'GODSCAR DEPTHS', startDepth: 10500, color: '#fde047', baseBlock: BlockType.DIVINE_SCAR,
+    blocks: [
+      { type: BlockType.GODSCAR_ORE, chance: 0.05 }, { type: BlockType.GOLD, chance: 0.2 }
+    ]
+  },
+  {
+    id: 'CORE_WOUND', name: 'THE CORE WOUND', startDepth: 11000, color: '#991b1b', baseBlock: BlockType.BLEEDING_REALITY,
+    blocks: [
+      { type: BlockType.CORE_ESSENCE, chance: 0.05 }, { type: BlockType.MAGMA_GOLD, chance: 0.1 }
+    ]
+  },
+  {
+    id: 'ABSOLUTE_HOLLOW', name: 'ABSOLUTE HOLLOW', startDepth: 11500, color: '#ffffff', baseBlock: BlockType.NOTHINGNESS,
+    blocks: [
+      { type: BlockType.ABSOLUTE_VOID_CRYSTAL, chance: 0.01 }, { type: BlockType.EVENT_HORIZON_CORE, chance: 0.001 }
     ]
   }
 ];
@@ -238,14 +367,38 @@ export const PICKAXE_TIERS: PickaxeStats[] = [
 ];
 
 export const ABILITIES: Record<string, AbilityDef> = {
-    // PASSIVE
+    // EXISTING PASSIVE
     'luck': { id: 'luck', name: 'Mining Luck', description: '+10% Ore Chance (Stacks)', price: 5000, cooldown: 0, icon: 'TrendingUp', type: 'PASSIVE' },
     'efficiency': { id: 'efficiency', name: 'Efficiency', description: '+20% Sell Value (Stacks)', price: 10000, cooldown: 0, icon: 'DollarSign', type: 'PASSIVE' },
     
-    // ACTIVE (Player abilities with cooldowns)
+    // NEW PASSIVES
+    'fortune': { id: 'fortune', name: 'Fortune', description: 'Double Drop Chance', price: 25000, cooldown: 0, icon: 'Gem', type: 'PASSIVE' },
+    'momentum': { id: 'momentum', name: 'Momentum', description: 'Less Friction, More Speed', price: 15000, cooldown: 0, icon: 'Zap', type: 'PASSIVE' },
+    'aerodynamic': { id: 'aerodynamic', name: 'Aerodynamic', description: 'Fall Faster', price: 12000, cooldown: 0, icon: 'ArrowDown', type: 'PASSIVE' },
+
+    // EXISTING ACTIVE
     'tnt_bundle': { id: 'tnt_bundle', name: 'TNT Bundle', description: 'Drop 5 TNTs', price: 2000, cooldown: 30, icon: 'Bomb', type: 'ACTIVE' },
     'magnet': { id: 'magnet', name: 'Loot Magnet', description: 'Pull all loose blocks for 10s', price: 8000, cooldown: 60, icon: 'Magnet', type: 'ACTIVE' },
     'drill': { id: 'drill', name: 'Giga Drill', description: 'Shred blocks on contact for 5s', price: 15000, cooldown: 120, icon: 'Disc', type: 'ACTIVE' },
     'freeze': { id: 'freeze', name: 'Time Freeze', description: 'Slow down physics for 10s', price: 20000, cooldown: 90, icon: 'Snowflake', type: 'ACTIVE' },
     'nuke': { id: 'nuke', name: 'Tactical Nuke', description: 'Spawn a Mega TNT', price: 50000, cooldown: 300, icon: 'Radiation', type: 'ACTIVE' },
+
+    // NEW SIMPLE ACTIVE
+    'dash_left': { id: 'dash_left', name: 'Dash Left', description: 'Burst Left', price: 1000, cooldown: 5, icon: 'ArrowDown', type: 'ACTIVE' },
+    'dash_right': { id: 'dash_right', name: 'Dash Right', description: 'Burst Right', price: 1000, cooldown: 5, icon: 'ArrowDown', type: 'ACTIVE' },
+    'jump': { id: 'jump', name: 'Rocket Jump', description: 'Blast Upwards', price: 2000, cooldown: 10, icon: 'ArrowDown', type: 'ACTIVE' },
+    'dynamite': { id: 'dynamite', name: 'Dynamite Stick', description: 'Small precision explosive', price: 500, cooldown: 15, icon: 'Bomb', type: 'ACTIVE' },
+    'repel': { id: 'repel', name: 'Repulsor', description: 'Push away debris', price: 3000, cooldown: 20, icon: 'Magnet', type: 'ACTIVE' },
+    'ball_scatter': { id: 'ball_scatter', name: 'Scatter Shot', description: 'Launch 5 Balls', price: 4000, cooldown: 25, icon: 'Disc', type: 'ACTIVE' },
+    'mini_drill': { id: 'mini_drill', name: 'Mini Drill', description: 'Drill for 2s', price: 5000, cooldown: 30, icon: 'Disc', type: 'ACTIVE' },
+    'feather_fall': { id: 'feather_fall', name: 'Feather Fall', description: 'Low Gravity 5s', price: 6000, cooldown: 45, icon: 'Snowflake', type: 'ACTIVE' },
+    'heavy_weight': { id: 'heavy_weight', name: 'Heavy Metal', description: 'High Gravity 5s', price: 6000, cooldown: 45, icon: 'ArrowDown', type: 'ACTIVE' },
+    'loot_drop': { id: 'loot_drop', name: 'Supply Drop', description: 'Spawn a Loot Crate', price: 10000, cooldown: 60, icon: 'DollarSign', type: 'ACTIVE' },
+
+    // NEW EXPENSIVE ACTIVE
+    'black_hole': { id: 'black_hole', name: 'Black Hole', description: 'Consume everything nearby', price: 1000000, cooldown: 300, icon: 'Disc', type: 'ACTIVE' },
+    'antimatter_bomb': { id: 'antimatter_bomb', name: 'Antimatter Bomb', description: 'Massive void explosion', price: 5000000, cooldown: 600, icon: 'Radiation', type: 'ACTIVE' },
+    'orbital_laser': { id: 'orbital_laser', name: 'Orbital Laser', description: 'Obliterate a column', price: 10000000, cooldown: 400, icon: 'Zap', type: 'ACTIVE' },
+    'midas_touch': { id: 'midas_touch', name: 'Midas Touch', description: 'Turn surroundings to Gold', price: 25000000, cooldown: 600, icon: 'DollarSign', type: 'ACTIVE' },
+    'god_mode': { id: 'god_mode', name: 'GOD MODE', description: 'Become Giant & Invincible', price: 100000000, cooldown: 1200, icon: 'Crown', type: 'ACTIVE' },
 };
