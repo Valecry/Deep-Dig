@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Deep Dig",
+  "description": "A physics-based infinite mining game. Supports Twitch, YouTube Live, and Offline modes. Dig deep and watch the chaos unfold.",
+  "requestFramePermissions": []
+}
